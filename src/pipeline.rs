@@ -93,6 +93,12 @@ impl Pipeline {
         let mut depth = 0;
         self.process_tree(&source_root, &staging, &mut depth)?;
         self.import_extracted_partitions(&source_root)?;
+        if !self.has_content()? {
+            bail!(
+                "no supported firmware content found in {} (expected a boot/vendor_boot/init_boot/recovery/dtbo/super image, an archive, an OTA payload, an sdat pair, or an extracted partition directory)",
+                self.opts.input.display()
+            );
+        }
 
         self.finalize()?;
         util::remove_dir_all(&self.tmp);
@@ -215,6 +221,16 @@ impl Pipeline {
         }
         files.extend(extra);
         Ok(())
+    }
+
+    fn has_content(&self) -> Result<bool> {
+        for entry in fs::read_dir(&self.opts.out)? {
+            let entry = entry?;
+            if entry.file_name() != "tmp" {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// If the input is an already-extracted dump, mirror its partition
