@@ -309,19 +309,8 @@ fn extract_ruu(file: &Path, out: &Path, tmp: &Path) -> Result<()> {
     Ok(())
 }
 
-fn extract_pac(file: &Path, out: &Path, tmp: &Path) -> Result<()> {
-    let work = tmp.join("pac");
-    util::ensure_dir(&work)?;
-    let staged = stage_copy(file, &work)?;
-    let python = python()?;
-    let script = script("vendor/pacextractor/python/pacExtractor.py")?;
-    Runner::new(false)
-        .run(
-            &python,
-            &[script.as_os_str(), staged.as_os_str(), out.as_os_str()],
-            Some(&work),
-        )
-        .context("pac extraction failed")?;
+fn extract_pac(file: &Path, out: &Path, _tmp: &Path) -> Result<()> {
+    crate::pac::extract(file, out)?;
     Ok(())
 }
 
@@ -355,48 +344,8 @@ fn extract_sin(file: &Path, out: &Path, tmp: &Path) -> Result<()> {
     Ok(())
 }
 
-fn extract_update_app(file: &Path, out: &Path, tmp: &Path) -> Result<()> {
-    let work = tmp.join("uapp");
-    util::ensure_dir(&work)?;
-    let staged = stage_copy(file, &work)?;
-    let python = python()?;
-    let script = script("splituapp.py")?;
-    let mut args: Vec<std::ffi::OsString> = vec![
-        OsStr::new("-f").to_os_string(),
-        staged.as_os_str().to_os_string(),
-        OsStr::new("-l").to_os_string(),
-    ];
-    // Extract every partition listed by the old dumper.
-    for p in [
-        "super",
-        "system",
-        "vendor",
-        "product",
-        "odm",
-        "system_ext",
-        "preas",
-        "preavs",
-        "modem",
-        "boot",
-        "recovery",
-        "dtbo",
-    ] {
-        args.push(OsStr::new(p).to_os_string());
-    }
-    let os_args: Vec<&OsStr> = args.iter().map(|a| a.as_os_str()).collect();
-    let runner = Runner::new(false);
-    let mut full = vec![script.as_os_str()];
-    full.extend_from_slice(&os_args);
-    runner.run(&python, &full, Some(&work)).or_else(|_| {
-        // Some UPDATE.APP files only contain a subset; retry without -l.
-        util::warn("splituapp with explicit list failed; retrying full extraction");
-        runner.run(
-            &python,
-            &[script.as_os_str(), OsStr::new("-f"), staged.as_os_str()],
-            Some(&work),
-        )
-    })?;
-    move_images(&work, out)?;
+fn extract_update_app(file: &Path, out: &Path, _tmp: &Path) -> Result<()> {
+    crate::uapp::extract(file, out, &[])?;
     Ok(())
 }
 

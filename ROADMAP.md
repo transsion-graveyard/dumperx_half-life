@@ -13,6 +13,9 @@
 - [x] build.prop parsing and README metadata.
 - [x] Native `ikconfig` extraction.
 - [x] Native `sdat2img` for A-only block OTAs.
+- [x] Native `payload.bin` parser (REPLACE/BZ/XZ/ZSTD/ZERO/DISCARD).
+- [x] Native `UPDATE.APP` extractor.
+- [x] Native Spreadtrum `.pac` extractor.
 - [x] Native proprietary-files classifier (validated against android_tools).
 - [x] Native SHA-1 manifests.
 - [x] Native TWRP/AOSP device-tree generation with multi-image selection.
@@ -28,8 +31,6 @@ next porting targets:
 - [ ] `ofp` (oppo_decrypt QC/MTK)
 - [ ] `ops` (opscrypto)
 - [ ] `kdz` / `dz` (kdztools)
-- [ ] `pac` (pacextractor)
-- [ ] `UPDATE.APP` (splituapp)
 - [ ] `sin` (unsin binary)
 - [ ] `nb0` (nb0-extract binary)
 - [ ] HTC RUU (RUU_Decrypt_Tool binary)
@@ -38,7 +39,6 @@ next porting targets:
 
 ## Other follow-ups
 
-- [ ] Native `payload.bin` parser (currently bundled `payload-dumper-go`).
 - [ ] Native `dtc` replacement (currently host `dtc`).
 - [ ] Optional kernel symbol recovery (`kallsyms.txt` / `boot.elf`).
 - [ ] Repack support (boot/vendor_boot/super) on top of the native parsers.

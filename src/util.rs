@@ -296,3 +296,36 @@ pub fn list_dirs(dir: &Path) -> Result<Vec<PathBuf>> {
     dirs.sort();
     Ok(dirs)
 }
+
+
+/// Recursively mirror a directory using hard links (falling back to copies
+/// for cross-device files).  Used when the input is an already-extracted
+/// dump; this keeps the original tree untouched while giving the pipeline a
+/// writable output root without duplicating gigabytes of data.
+pub fn link_tree(src: &Path, dst: &Path) -> Result<()> {
+    ensure_dir(dst)?;
+    for entry in fs::read_dir(src).with_context(|| format!("reading {}", src.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        let target = dst.join(entry.file_name());
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            link_tree(&path, &target)?;
+        } else if file_type.is_symlink() {
+            let link = fs::read_link(&path)?;
+            let _ = fs::remove_file(&target);
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&link, &target)?;
+            #[cfg(not(unix))]
+            copy_file(&path, &target)?;
+        } else if file_type.is_file() {
+            if target.exists() {
+                continue;
+            }
+            if fs::hard_link(&path, &target).is_err() {
+                copy_file(&path, &target)?;
+            }
+        }
+    }
+    Ok(())
+}

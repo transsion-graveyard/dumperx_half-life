@@ -91,6 +91,7 @@ impl Pipeline {
 
         let mut depth = 0;
         self.process_tree(&source_root, &staging, &mut depth)?;
+        self.import_extracted_partitions(&source_root)?;
 
         self.finalize()?;
         util::remove_dir_all(&self.tmp);
@@ -140,7 +141,11 @@ impl Pipeline {
         let link = staging.join(&name);
         #[cfg(unix)]
         {
-            if std::os::unix::fs::symlink(input, &link).is_err() {
+            // Prefer a hard link (no extra space).  Fall back to a symlink
+            // for cross-device inputs; the walker follows file symlinks.
+            if std::fs::hard_link(input, &link).is_err()
+                && std::os::unix::fs::symlink(input, &link).is_err()
+            {
                 util::copy_file(input, &link)?;
             }
         }
@@ -149,6 +154,50 @@ impl Pipeline {
             util::copy_file(input, &link)?;
         }
         Ok(staging.to_path_buf())
+    }
+
+    /// If the input is an already-extracted dump, mirror its partition
+    /// directories into the output root with hard links so metadata, fstab
+    /// and proprietary-files generation work without re-extracting images.
+    fn import_extracted_partitions(&self, root: &Path) -> Result<()> {
+        if root == self.opts.out {
+            return Ok(());
+        }
+        const PARTITIONS: &[&str] = &[
+            "system",
+            "system_ext",
+            "system_other",
+            "vendor",
+            "odm",
+            "product",
+            "vendor_dlkm",
+            "odm_dlkm",
+            "system_dlkm",
+            "my_product",
+            "my_manifest",
+            "my_stock",
+            "my_heytap",
+            "my_custom",
+            "my_carrier",
+            "my_region",
+            "my_bigball",
+            "special_preload",
+            "oppo_product",
+            "preload_common",
+            "opproduct",
+        ];
+        for partition in PARTITIONS {
+            let src = root.join(partition);
+            let dst = self.opts.out.join(partition);
+            if src.is_dir() && !dst.exists() {
+                util::info(format!(
+                    "mirroring extracted partition directory {}",
+                    src.display()
+                ));
+                util::link_tree(&src, &dst)?;
+            }
+        }
+        Ok(())
     }
 
     fn process_tree(&mut self, root: &Path, staging: &Path, depth: &mut usize) -> Result<()> {
@@ -166,7 +215,9 @@ impl Pipeline {
                 Ok(e) => e,
                 Err(_) => continue,
             };
-            if entry.file_type().is_file() {
+            // Follow file symlinks (a direct single-file input is exposed
+            // through a staging link); do not descend into directory links.
+            if entry.path().is_file() {
                 files.push(entry.path().to_path_buf());
             }
         }
@@ -198,7 +249,13 @@ impl Pipeline {
             if payload::is_payload(&head) {
                 let out = staging.join(format!("payload-{}", util::stem(file)));
                 util::info(format!("extracting OTA payload {}", file.display()));
-                payload::extract(file, &out)?;
+                if let Err(e) = payload::extract(file, &out) {
+                    util::warn(format!(
+                        "native payload parser failed ({e:#}); falling back to bundled payload-dumper-go"
+                    ));
+                    util::remove_dir_all(&out);
+                    payload::extract_legacy(file, &out)?;
+                }
                 self.process_tree(&out, staging, depth)?;
                 continue;
             }

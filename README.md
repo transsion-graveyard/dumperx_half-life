@@ -82,8 +82,9 @@ or:
 
 `setup.sh` checks for `cargo`, `python3` (legacy bridge), `dtc`, `lz4`, `xz`,
 `bzip2`, `zstd` and `brotli`, and builds the binary. The 7-Zip, EROFS,
-F2FS, payload-dumper-go, magiskboot, RUU, nb0, unsin and Amlogic tools are
-already in `utils/`.
+F2FS, magiskboot, RUU, nb0, unsin and Amlogic tools are already in
+`utils/`. `payload-dumper-go` is kept only as a fallback for payload
+manifests the native parser does not understand yet.
 
 ## Usage
 
@@ -196,7 +197,9 @@ Native Rust:
 | ramdisk compression | gzip, lz4 legacy/frame, xz, lzma, bzip2, zstd |
 | EROFS / ext4 / F2FS | `fsimage.rs` + bundled extractors |
 | A-only `*.new.dat` OTA | `sdat.rs` (`sdat2img` replacement) |
-| `payload.bin` OTA | bundled `payload-dumper-go` |
+| `payload.bin` OTA | `payload.rs` (native manifest parser, Go fallback) |
+| `UPDATE.APP` | `uapp.rs` |
+| Spreadtrum `*.pac` | `pac.rs` |
 | zip/rar/7z/tar | bundled `7zz` |
 | build.prop / metadata | `props.rs` |
 | proprietary-files | `proprietary.rs` + generated rules |
@@ -213,8 +216,6 @@ use the Python packages installed by the host:
 - `ozip` → `utils/vendor/oppo_ozip_decrypt`
 - `ofp`, `ops` → `utils/vendor/oppo_decrypt`
 - `kdz`/`dz` → `utils/kdztools`
-- `pac` → `utils/vendor/pacextractor`
-- `UPDATE.APP` → `utils/splituapp.py`
 - `nb0`, `sin`, RUU, Rockchip, Amlogic → bundled binaries
 
 These paths report a clear error if a required helper is missing; they never
@@ -237,7 +238,7 @@ src/
   device_tree.rs        TWRP/AOSP tree generation
   proprietary.rs        blob classifier
   legacy.rs             offline bridge for vendor formats
-  sdat.rs, ikconfig.rs, sha1sum.rs, archive.rs, payload.rs
+  sdat.rs, ikconfig.rs, sha1sum.rs, archive.rs, payload.rs, uapp.rs, pac.rs
 utils/                  vendored tools/scripts
 vendor/                 vendored Cargo crates
 ```

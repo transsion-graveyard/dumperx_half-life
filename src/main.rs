@@ -12,6 +12,7 @@ mod fsimage;
 mod fstab;
 mod ikconfig;
 mod legacy;
+mod pac;
 mod payload;
 mod pipeline;
 mod props;
@@ -22,6 +23,7 @@ mod sdat;
 mod sha1sum;
 mod sparse;
 mod superimg;
+mod uapp;
 mod util;
 
 #[derive(Parser, Debug)]
