@@ -25,7 +25,9 @@ The old `dumper.sh` cloned four GitHub repositories, curled
 `extract-ikconfig`, and used `uv`/`uvx` to fetch Python packages and tools
 from the network on every run. All of that is gone:
 
-- Every helper script and binary used at runtime is vendored in `utils/`.
+- The DumprX-specific helper scripts and binaries are vendored in `utils/`;
+  standard host tools (`dtc`, `lz4`, `xz`, `bzip2`, `zstd`, `brotli`) are
+  checked by `setup.sh`.
 - Cargo dependencies are vendored in `vendor/` with `.cargo/config.toml`.
 - `dumper.sh` is a thin wrapper around `target/release/dumprx`; it builds
   with `cargo build --offline` and executes the Rust binary.
