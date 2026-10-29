@@ -164,9 +164,6 @@ fn main() -> Result<()> {
                 device_tree: !no_device_tree,
                 twrp,
                 aosp,
-                jobs: std::thread::available_parallelism()
-                    .map(|n| n.get())
-                    .unwrap_or(4),
                 partitions,
                 strict_fstab,
             };

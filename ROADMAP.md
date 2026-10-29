@@ -39,6 +39,8 @@ next porting targets:
 
 ## Other follow-ups
 
+- [ ] Optional GitHub/GitLab/Telegram publishing (the online shell path was
+      intentionally removed; DumprX currently writes a local dump only).
 - [ ] Native `dtc` replacement (currently host `dtc`).
 - [ ] Optional kernel symbol recovery (`kallsyms.txt` / `boot.elf`).
 - [ ] Repack support (boot/vendor_boot/super) on top of the native parsers.

@@ -30,8 +30,9 @@ from the network on every run. All of that is gone:
 - `dumper.sh` is a thin wrapper around `target/release/dumprx`; it builds
   with `cargo build --offline` and executes the Rust binary.
 - `setup.sh` only checks the host tools and builds; it never downloads.
-- `dumprx` itself has no downloader code path. URL inputs were removed;
-  pass a local file, archive, or extracted directory.
+- `dumprx` itself has no downloader code path. URL inputs and the old
+  GitHub/GitLab/Telegram push helpers were removed; pass a local file,
+  archive, or extracted directory and DumprX writes a local dump.
 
 ### 2. Boot image header v4 support
 

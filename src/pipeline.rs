@@ -30,7 +30,6 @@ pub struct DumpOptions {
     pub device_tree: bool,
     pub twrp: bool,
     pub aosp: bool,
-    pub jobs: usize,
     /// Restrict super partition extraction to these partition names.
     pub partitions: Vec<String>,
     /// Treat fstab parse errors as fatal.
