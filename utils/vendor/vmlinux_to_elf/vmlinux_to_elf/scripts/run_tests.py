@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+# -*- encoding: Utf-8 -*-
+
+"""
+Check the program's ability to decompress
+the files files whose the absolute path
+is referenced by the "test_kernels.txt"
+present in the current directory (one kernel
+path per line, separated with LF)
+
+As this file is local to your own machine,
+it is ignored by the ".gitignore"
+
+It will also write successfully reconstructed
+ELF files to an automatically created "tests_output/" folder.
+"""
+
+import logging
+from os import makedirs
+from os.path import dirname, exists, realpath
+from re import sub
+from sys import stderr
+from traceback import print_exc
+
+from vmlinux_to_elf.core.auto_unpack import VmlinuzDecompressor
+from vmlinux_to_elf.core.elf_symbolizer import ElfSymbolizer
+
+SCRIPT_DIR = dirname(realpath(__file__))
+
+TEST_KERNELS_PATH = realpath(SCRIPT_DIR + '/test_kernels.txt')
+ELF_KERNELS_OUTPUT_PATH = realpath(SCRIPT_DIR + '/tests_output')
+
+
+def slugify(file_path):
+    return sub(r'[^a-z0-9]+', '-', file_path.lower()).strip('-')
+
+
+if __name__ == '__main__':
+    logging.basicConfig(
+        stream=stderr, level=logging.INFO, format='%(message)s'
+    )
+
+    if not exists(TEST_KERNELS_PATH):
+        logging.critical(
+            (
+                '[!] In order to use this script, please '
+                + 'create a file at %s, containing to path '
+                + 'to one kernel to extract per line. Quitting.'
+            )
+            % (TEST_KERNELS_PATH)
+        )
+
+        exit()
+
+    makedirs(ELF_KERNELS_OUTPUT_PATH, exist_ok=True)
+
+    for file_name in filter(
+        None, map(str.strip, open(TEST_KERNELS_PATH, 'r'))
+    ):
+        logging.info('Testing ' + file_name)
+
+        with open(file_name, 'rb') as fd:
+            contents = fd.read()
+
+        raw_data = VmlinuzDecompressor(contents).decompressed
+        try:
+            ElfSymbolizer(
+                raw_data,
+                ELF_KERNELS_OUTPUT_PATH + '/' + slugify(file_name) + '.elf',
+            )
+        except Exception:
+            logging.error('=> No symbols!')
+            print_exc()

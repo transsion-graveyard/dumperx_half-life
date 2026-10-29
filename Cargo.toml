@@ -1,0 +1,27 @@
+[package]
+name = "dumprx"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Offline Android firmware dumper, rewritten in Rust"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/DumprX/DumprX"
+default-run = "dumprx"
+
+[[bin]]
+name = "dumprx"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "wrap_help"] }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+walkdir = "2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

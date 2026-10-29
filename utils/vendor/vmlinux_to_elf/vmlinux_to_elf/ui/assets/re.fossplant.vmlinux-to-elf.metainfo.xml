@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>re.fossplant.vmlinux-to-elf</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>vmlinux-to-elf</name>
+  <branding>
+    <color type="primary" scheme_preference="light">#FFFFFF</color>
+    <color type="primary" scheme_preference="dark">#270064</color>
+  </branding>
+  <summary>Convert raw Linux kernel blobs to ELF files</summary>
+  <description>
+    <p>vmlinux-to-elf is a tool to recover a fully analyzable .ELF from a raw kernel, through extracting the kernel symbol table (kallsyms)</p>
+    <p>Features:</p>
+    <p>- Take a raw binary blob or ELF kernel file as an input.</p>
+    <p>- Automatically detect and unpack the main compression formats used for the Linux kernel.</p>
+    <p>- Find and extract the embedded kernel symbols table (kallsyms) from the input file.</p>
+    <p>- Infer the instruction set architecture, endianness, bit size, relying upon other things on common function prologue signatures.</p>
+    <p>- Infer the entry point of the kernel from the symbols contained in the kallsyms table.</p>
+    <p>- Provide basic inference for the kernel base address.</p>
+    <p>- Unpack certain types of Android boot.img files, starting with an "ANDROID!" or "UNCOMPRESSED_IMG" magic.</p>
+    <p>- Produce an .ELF file fully analyzable with IDA Pro or Ghidra as an output.</p>
+  </description>
+  <screenshots>
+    <screenshot type="default">
+      <image type="source" scale="2">https://raw.githubusercontent.com/marin-m/vmlinux-to-elf/f368b312d7aa7015eedeb44ab27ca13db87aafca/pics/Screenshot_2_Kernel_loaded.png</image>
+      <caption>vmlinux-to-elf: kernel selection screen</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source" scale="2">https://raw.githubusercontent.com/marin-m/vmlinux-to-elf/f368b312d7aa7015eedeb44ab27ca13db87aafca/pics/Screenshot_6_Offsets_view_with_hex_dump.png</image>
+      <caption>vmlinux-to-elf: detected offsets preview screen</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source" scale="2">https://raw.githubusercontent.com/marin-m/vmlinux-to-elf/f368b312d7aa7015eedeb44ab27ca13db87aafca/pics/Screenshot_7_Extraction_Successful.png</image>
+      <caption>vmlinux-to-elf: extraction successfull screen</caption>
+    </screenshot>
+    <screenshot environment="gnome:dark">
+      <image type="source" scale="2">https://raw.githubusercontent.com/marin-m/vmlinux-to-elf/f368b312d7aa7015eedeb44ab27ca13db87aafca/pics/Screenshot_3_Kernel_loaded_Dark.png</image>
+      <caption>vmlinux-to-elf's main window, on GNOME in dark mode</caption>
+    </screenshot>
+  </screenshots>
+  <!--translation type="gettext">vmlinux-to-elf</translation-->
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+  <recommends>
+    <display_length compare="ge">360</display_length>
+  </recommends>
+  <url type="bugtracker">https://github.com/marin-m/vmlinux-to-elf/issues/new/choose</url>
+  <url type="homepage">https://github.com/marin-m/vmlinux-to-elf</url>
+  <url type="help">https://matrix.to/#/#vmlinux-to-elf:matrix.org</url>
+  <url type="faq">https://github.com/marin-m/vmlinux-to-elf#readme</url>
+  <!--url type="translate">https://github.com/marin-m/SongRec/tree/main/translations#readme</url-->
+  <url type="vcs-browser">https://github.com/marin-m/vmlinux-to-elf</url>
+<!--
+Open Age Rating Service
+https://hughsie.github.io/oars/index.html
+-->
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="1.4.0" date="2026-10-24">
+      <description>
+        <ul>
+          <li>Fixes two vendor-specific issues that prevented correct kallsyms extraction from some Android boot images (PR #106 thanks to @zzzxxxxxxxxxx)</li>
+          <li>Use the uImage load address as an user-facing hint rather than a base address guess, as it may be sometimes wrong</li>
+          <li>Add a global error handler in the Python GUI</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.3.7" date="2026-10-23">
+      <description>
+        <ul>
+          <li>Fix loading kernel metadata with legacy Peewee versions (PR #105 thanks to @jay23606)</li>
+          <li>Update kernel cross-references metadata with 7.x information</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.3.6" date="2026-05-20">
+      <description>
+        <ul>
+          <li>ARM64: Fix guessing the relative base in certain kernels (issue #54)</li>
+          <li>ARM64: Correctly display relocated data into the hex preview in the UI</li>
+          <li>Add support for decompressing uImage LZMA kernels</li>
+          <li>Provisionally add support for reserializing section-stripped ELF kernels</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.3.5" date="2026-05-20">
+      <description>
+        <ul>
+          <li>Correctly support back parsing uImage files with the UI (issue #3)</li>
+          <li>Correctly handle the presence of sh_type in SHT_REL and SHT_RELA, and lack thereof (issue #37)</li>
+          <li>Fix an issue in "find_kallsyms_markers_uncompressed" providing wrong offsets on OpenWRT images (issue #99)</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.3.4" date="2026-05-14">
+      <description>
+        <p>Correctly consider that ARM64 kernels have their base address aligned on 0x80000</p>
+      </description>
+    </release>
+    <release version="1.3.3" date="2026-05-14">
+      <description>
+        <p>Fix regression over recursively unpacking data</p>
+        <p>Correctly indicate whenever the kernel base address was found using kallsyms_relative_base</p>
+      </description>
+    </release>
+    <release version="1.3.2" date="2026-05-14">
+      <description>
+        <p>Correctly show the guessed base address in the GTK UI for non-ARM64 kernels</p>
+        <p>Allow re-entrance of symbolized ARM64 kernels</p>
+      </description>
+    </release>
+    <release version="1.3.1" date="2026-05-14">
+      <description>
+        <p>Fix minor code breakage introduced by a previous patch</p>
+      </description>
+    </release>
+    <release version="1.3.0" date="2026-05-13">
+      <description>
+        <p>Ensure that no data is overridden in the packed kallsyms zone when applying ARM64 relocations (issue #95)</p>
+        <p>Add support for the Linux 7.0 kernel (PR #97 thanks to @bahorn)</p>
+        <p>Fix detecting the boundaries of the elf64_rela array</p>
+        <p>Use 0x20000 instead of 0x10000 as a default kernel base address alignment when inferring from ARM64 relocations (issue #95)</p>
+        <p>Use 0x2000 instead of 0x1000 as a default kernel base address alignment when inferring from symbol table (issue #67)</p>
+      </description>
+    </release>
+    <release version="1.2.3" date="2026-03-18">
+      <description>
+        <p>Implement an UI information row + button to export the decompressed and unpacked kernel</p>
+        <p>Print useful information about the packing or compression method used through GUI and CLI</p>
+        <p>Correctly pipe the "kallsyms-finder" output to stdout instead of stderr</p>
+      </description>
+    </release>
+    <release version="1.2.2" date="2026-03-12">
+      <description>
+        <p>Modify the "pyproject.toml" file to accept Peewee 3.x so that the AUR package can be bumped</p>
+        <p>Add a "vmlinuz-decompressor" script for just decompressing kernels without symbolizing</p>
+        <p>Improve app documentation</p>
+      </description>
+    </release>
+    <release version="1.2.1" date="2026-03-09">
+      <description>
+        <p>Fix regression in parsing certain Android images (issue #81)</p>
+        <p>Fix ".desktop" metadata</p>
+        <p>Fix displaying "Adw.ToastOverlay" with recent GTK-4 versions</p>
+        <p>Implement Snapcraft packaging</p>
+      </description>
+    </release>
+    <release version="1.2.0" date="2026-03-03">
+      <description>
+        <p>Release a new GTK-4 based UI</p>
+      </description>
+    </release>
+  </releases>
+  <developer id="re.fossplant">
+    <name>Marin M. - Fossplant.re</name>
+  </developer>
+  <update_contact>marin-m@users.noreply.github.com</update_contact>
+
+  <launchable type="desktop-id">re.fossplant.vmlinux-to-elf.desktop</launchable>
+  <provides>
+    <dbus type="user">re.fossplant.vmlinux-to-elf</dbus>
+    <binary>vmlinux-to-elf</binary>
+    <binary>kallsyms-finder</binary>
+    <binary>vmlinuz-decompressor</binary>
+    <binary>vmlinux-to-elf-gui</binary>
+    <mediatype>application/x-pie-executable</mediatype>
+    <mediatype>application/x-executable</mediatype>
+    <mediatype>application/x-sharedlib</mediatype>
+    <mediatype>application/vnd.microsoft.portable-executable</mediatype>
+    <mediatype>application/octet-stream</mediatype>
+    <mediatype>application/vnd.efi.img</mediatype>
+  </provides>
+</component>

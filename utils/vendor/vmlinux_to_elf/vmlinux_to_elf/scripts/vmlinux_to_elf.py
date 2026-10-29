@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+# -*- encoding: Utf-8 -*-
+import logging
+from importlib.metadata import version
+from argparse import ArgumentParser
+from sys import stderr, argv
+
+from vmlinux_to_elf.core.architecture_detecter import ArchitectureGuessError
+from vmlinux_to_elf.core.auto_unpack import VmlinuzDecompressor
+from vmlinux_to_elf.core.elf_symbolizer import ElfSymbolizer
+
+
+def main():
+    logging.basicConfig(
+        stream=stderr, level=logging.INFO, format='%(message)s'
+    )
+
+    if '-V' in argv or '--version' in argv:
+        print('vmlinux-to-elf version ' + version('vmlinux-to-elf'))
+        exit(0)
+
+    args = ArgumentParser(
+        description='Turn a raw or compressed kernel binary, '
+        + 'or a kernel ELF without symbols, into a fully analyzable ELF whose '
+        + 'symbols were extracted from the kernel symbol table'
+    )
+
+    args.add_argument(
+        '-V',
+        '--version',
+        action='store_true',
+        help='Print package version to the standard output',
+    )
+
+    args.add_argument(
+        'input_file',
+        help='Path to the vmlinux/vmlinuz/zImage/'
+        + 'bzImage/kernel.bin/kernel.elf file to make into an analyzable .ELF',
+    )
+
+    args.add_argument(
+        'output_file', help='Path to the analyzable .ELF to output'
+    )
+
+    args.add_argument(
+        '--e-machine',
+        help='Force overriding the output ELF '
+        + '"e_machine" field with this integer value (rather than auto-detect)',
+        type=lambda string: int(string, 0),
+        metavar='DECIMAL_NUMBER',
+    )
+
+    args.add_argument(
+        '--bit-size',
+        help='Force overriding the input kernel '
+        + 'bit size, providing 32 or 64 bit (rather than auto-detect)',
+        type=int,
+    )
+
+    args.add_argument(
+        '--file-offset',
+        help='Consider that the raw kernel starts '
+        + 'at this offset of the provided raw file or compressed stream (rather than '
+        + '0, or the beginning of the ELF sections if an ELF header was present in the '
+        + 'input)',
+        type=lambda st: int(st, 16),
+        metavar='HEX_NUMBER',
+    )
+
+    args.add_argument(
+        '--base-address',
+        help='Force overriding the output ELF '
+        + 'base address field with this integer value (rather than auto-detect)',
+        type=lambda st: int(st, 16),
+        metavar='HEX_NUMBER',
+    )
+
+    args.add_argument(
+        '--bss-size',
+        help='Size in megabytes of the .bss section in the binary',
+        type=int,
+        default=16,
+    )
+
+    args.add_argument(
+        '--use-absolute',
+        help='Assume kallsyms offsets are absolute addresses',
+        action='store_true',
+    )
+
+    # args.add_argument(
+    #     '-e',
+    #     '--extra-info',
+    #     help='Print extra information useful to rebuild the kernel, including links to '
+    #     + 'source code',
+    #     action='store_true',
+    # )
+
+    args = args.parse_args()
+
+    if (args.e_machine is not None and args.bit_size is None) or (
+        args.e_machine is None and args.bit_size is not None
+    ):
+        logging.critical(
+            '[!] Please specify both an addressing bit size '
+            + 'and the ELF "e_machine" field, or neither for '
+            + 'auto-detection'
+        )
+
+        exit()
+
+    with open(args.input_file, 'rb') as kernel_bin:
+        try:
+            ElfSymbolizer(
+                VmlinuzDecompressor(kernel_bin.read()).decompressed,
+                args.output_file,
+                None,
+                args.e_machine,
+                args.bit_size,
+                args.base_address,
+                args.bss_size,
+                args.file_offset,
+                args.use_absolute,
+                # args.extra_info,
+            )
+
+        except ArchitectureGuessError:
+            logging.critical(
+                '[!] The architecture of your kernel could not be guessed '
+                + 'successfully. Please specify the --e-machine and --bit-size '
+                + 'arguments manually (use --help for their precise specification).'
+            )
+
+            exit()
+
+
+if __name__ == '__main__':
+    main()
