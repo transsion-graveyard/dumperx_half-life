@@ -11,7 +11,7 @@ use crate::bootimg::BootImage;
 use crate::fstab::{FstabEntry, FstabFile, FstabSet};
 use crate::props::{self, DeviceMetadata, PropStore};
 use crate::util;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
@@ -285,22 +285,34 @@ fn select_images(dump_root: &Path, fstab_set: &FstabSet) -> Result<SelectedImage
         }
         let ramdisk_dir = dump_root.join(name).join("ramdisk");
         if ramdisk_dir.is_dir() {
-            // vendor_boot v4 extracts one directory per ramdisk fragment;
-            // plain boot images put the tree directly in ramdisk/.
+            // A boot/init_boot/recovery ramdisk is one cpio tree even though
+            // it contains top-level directories (apex, system, ...).
+            // vendor_boot v4 is the exception: DumprX extracts one
+            // directory per table fragment (vendor_ramdiskNN, recovery,
+            // dlkm, ...).  Only expand when every child is such a fragment.
             let mut subdirs = Vec::new();
+            let mut has_plain_file = false;
             if let Ok(entries) = fs::read_dir(&ramdisk_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
                     if path.is_dir() {
                         subdirs.push(path);
+                    } else {
+                        has_plain_file = true;
                     }
                 }
             }
             subdirs.sort();
-            if subdirs.is_empty() {
-                out.ramdisk_dirs
-                    .push((format!("{name}.img"), ramdisk_dir));
-            } else {
+            let fragment_names = subdirs.iter().all(|path| {
+                let label = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_ascii_lowercase();
+                label.starts_with("vendor_ramdisk")
+                    || matches!(label.as_str(), "recovery" | "platform" | "dlkm")
+            });
+            if name == "vendor_boot" && !subdirs.is_empty() && !has_plain_file && fragment_names {
                 for sub in subdirs {
                     let label = sub
                         .file_name()
@@ -310,6 +322,9 @@ fn select_images(dump_root: &Path, fstab_set: &FstabSet) -> Result<SelectedImage
                     out.ramdisk_dirs
                         .push((format!("{name}.img:{label}"), sub));
                 }
+            } else {
+                out.ramdisk_dirs
+                    .push((format!("{name}.img"), ramdisk_dir));
             }
         }
     }

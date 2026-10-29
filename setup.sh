@@ -1,97 +1,76 @@
 #!/bin/bash
 
-# Clear Screen
-tput reset 2>/dev/null || clear
+# DumprX environment check.  Everything used by the Rust binary is either
+# vendored in this repository or installed here.  This script never downloads
+# anything.
 
-# Colours (or Colors in en_US)
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-PURPLE='\033[0;35m'
-BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
 NORMAL='\033[0m'
 
-# Abort Function
-function abort(){
-    [ ! -z "$@" ] && echo -e ${RED}"${@}"${NORMAL}
-    exit 1
+missing=0
+check() {
+	local name="$1" hint="$2"
+	if command -v "${name}" >/dev/null 2>&1; then
+		printf "  [ok]   %s\n" "${name}"
+	else
+		printf "  ${RED}[miss]${NORMAL} %-12s %s\n" "${name}" "${hint}"
+		missing=1
+	fi
 }
 
-# Banner
-function __bannerTop() {
-	echo -e \
-	${GREEN}"
-	██████╗░██╗░░░██╗███╗░░░███╗██████╗░██████╗░██╗░░██╗
-	██╔══██╗██║░░░██║████╗░████║██╔══██╗██╔══██╗╚██╗██╔╝
-	██║░░██║██║░░░██║██╔████╔██║██████╔╝██████╔╝░╚███╔╝░
-	██║░░██║██║░░░██║██║╚██╔╝██║██╔═══╝░██╔══██╗░██╔██╗░
-	██████╔╝╚██████╔╝██║░╚═╝░██║██║░░░░░██║░░██║██╔╝╚██╗
-	╚═════╝░░╚═════╝░╚═╝░░░░░╚═╝╚═╝░░░░░╚═╝░░╚═╝╚═╝░░╚═╝
-	"${NORMAL}
+check_file() {
+	local path="$1"
+	if [[ -x "${PROJECT_DIR}/${path}" ]]; then
+		printf "  [ok]   %s\n" "${path}"
+	else
+		printf "  ${RED}[miss]${NORMAL} %s\n" "${path}"
+		missing=1
+	fi
 }
 
-# Welcome Banner
-printf "\e[32m" && __bannerTop && printf "\e[0m"
+echo "DumprX (Rust) environment check"
+echo
 
-# Minor Sleep
-sleep 1
+echo "Build / runtime:"
+check cargo "install the Rust toolchain (rustup.rs)"
+check python3 "required only for the legacy vendor-format bridge"
 
-if [[ "$OSTYPE" == "linux-gnu" ]]; then
+echo
+echo "Compression / filesystem helpers:"
+check dtc "device tree compiler (device-tree dts output)"
+check lz4 "LZ4 ramdisk decompression"
+check xz "XZ/LZMA ramdisk and sdat decompression"
+check bzip2 "bzip2 ramdisk decompression"
+check zstd "zstd ramdisk decompression"
+check brotli "brotli .new.dat decompression"
 
-    if command -v apt > /dev/null 2>&1; then
+echo
+echo "Bundled tools:"
+check_file "utils/bin/7zz"
+check_file "utils/bin/fsck.erofs"
+check_file "utils/bin/f2fs-extractor"
+check_file "utils/bin/payload-dumper-go"
+check_file "utils/bin/magiskboot"
+check_file "utils/RUU_Decrypt_Tool"
+check_file "utils/nb0-extract"
+check_file "utils/unsin"
+check_file "utils/aml-upgrade-package-extract"
 
-        echo -e ${PURPLE}"Ubuntu/Debian Based Distro Detected"${NORMAL}
-        sleep 1
-        echo -e ${BLUE}">> Updating apt repos..."${NORMAL}
-        sleep 1
-	    sudo apt -y update || abort "Setup Failed!"
-	    sleep 1
-	    echo -e ${BLUE}">> Installing Required Packages..."${NORMAL}
-	    sleep 1
-        sudo apt install -y unace unrar zip unzip p7zip-full p7zip-rar sharutils rar uudeview mpack arj cabextract device-tree-compiler liblzma-dev brotli liblz4-tool axel gawk aria2 detox cpio rename liblz4-dev jq git-lfs || abort "Setup Failed!"
-
-    elif command -v dnf > /dev/null 2>&1; then
-
-        echo -e ${PURPLE}"Fedora Based Distro Detected"${NORMAL}
-        sleep 1
-	    echo -e ${BLUE}">> Installing Required Packages..."${NORMAL}
-	    sleep 1
-
-	    # "dnf" automatically updates repos before installing packages
-        sudo dnf install -y unace unrar zip unzip sharutils uudeview arj cabextract file-roller dtc brotli axel aria2 detox cpio lz4 xz-devel p7zip p7zip-plugins git-lfs || abort "Setup Failed!"
-
-    elif command -v pacman > /dev/null 2>&1; then
-
-        echo -e ${PURPLE}"Arch or Arch Based Distro Detected"${NORMAL}
-        sleep 1
-	    echo -e ${BLUE}">> Installing Required Packages..."${NORMAL}
-	    sleep 1
-
-        sudo pacman -Syyu --needed --noconfirm >/dev/null || abort "Setup Failed!"
-        sudo pacman -Sy --noconfirm unace unrar p7zip sharutils uudeview arj cabextract file-roller dtc brotli axel gawk aria2 detox cpio lz4 jq git-lfs || abort "Setup Failed!"
-
-    fi
-
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-
-    echo -e ${PURPLE}"macOS Detected"${NORMAL}
-    sleep 1
-	echo -e ${BLUE}">> Installing Required Packages..."${NORMAL}
-	sleep 1
-    brew install protobuf xz brotli lz4 aria2 detox coreutils p7zip gawk git-lfs || abort "Setup Failed!"
-
+if [[ ${missing} -ne 0 ]]; then
+	echo
+	printf "${YELLOW}Some optional tools are missing. Core dumps still work; the affected format paths will report a clear error.${NORMAL}\n"
 fi
 
-sleep 1
+echo
+echo "Building dumprx (offline)..."
+( cd "${PROJECT_DIR}" && cargo build --offline --release )
 
-# Install `uv`
-if ! command -v uv > /dev/null ; then
-    echo -e ${BLUE}">> Installing uv for python packages..."${NORMAL}
-    sleep 1
-    bash -c "$(curl -sL https://astral.sh/uv/install.sh)" || abort "Setup Failed!"
-fi
-
-# Done!
-echo -e ${GREEN}"Setup Complete!"${NORMAL}
-
-# Exit
-exit 0
+echo
+printf "${GREEN}Setup complete.${NORMAL}\n"
+echo "Run: ./dumper.sh <firmware file, archive or extracted dump directory>"

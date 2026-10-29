@@ -4,14 +4,14 @@ use crate::props::DeviceMetadata;
 use crate::proprietary_rules::{Rule, RULES};
 use crate::sha1sum;
 use crate::util;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 pub fn generate(
     dump_root: &Path,
-    meta: &DeviceMetadata,
+    _meta: &DeviceMetadata,
     description: &str,
 ) -> Result<PathBuf> {
     util::step("Generating proprietary-files.txt");

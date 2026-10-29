@@ -216,7 +216,6 @@ impl Pipeline {
 
         // Boot images.
         for file in &files {
-            let name = file.file_name().unwrap_or_default().to_string_lossy().to_string();
             let head = util::read_head(file, 8).unwrap_or_default();
             if bootimg::is_boot_image(&head) {
                 let base = util::base_partition(&util::stem(file)).to_string();
@@ -241,7 +240,6 @@ impl Pipeline {
 
         // dtbo.
         for file in &files {
-            let name = file.file_name().unwrap_or_default().to_string_lossy().to_string();
             if util::base_partition(&util::stem(file)) == "dtbo" {
                 self.handle_dtbo(file)?;
             }

@@ -51,7 +51,7 @@ fn parse_rangeset(text: &str) -> Result<Vec<Range>> {
     Ok(ranges)
 }
 
-pub fn parse_transfer_list(path: &Path) -> Result<(u32, u64, Vec<Command>)> {
+fn parse_transfer_list(path: &Path) -> Result<(u32, u64, Vec<Command>)> {
     let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
     let mut lines = BufReader::new(file).lines();
     let version: u32 = lines

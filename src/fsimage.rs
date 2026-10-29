@@ -237,7 +237,7 @@ fn dir_has_entries(dir: &Path) -> bool {
 }
 
 fn strip_header(src: &Path, dst: &Path, offset: u64) -> Result<()> {
-    use std::io::{Read, Seek, SeekFrom, Write};
+    use std::io::{Seek, SeekFrom, Write};
     let mut input = fs::File::open(src)?;
     input.seek(SeekFrom::Start(offset))?;
     let mut output = fs::File::create(dst)?;
