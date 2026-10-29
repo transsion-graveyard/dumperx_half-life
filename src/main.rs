@@ -7,12 +7,16 @@ use std::path::PathBuf;
 mod archive;
 mod bootimg;
 mod cpio;
+mod device_tree;
 mod fsimage;
 mod fstab;
 mod ikconfig;
+mod legacy;
 mod payload;
 mod pipeline;
 mod props;
+mod proprietary;
+mod proprietary_rules;
 mod ramdisk;
 mod sdat;
 mod sha1sum;
@@ -60,6 +64,22 @@ enum Commands {
         /// Verbose command logging
         #[arg(short, long)]
         verbose: bool,
+    },
+    /// Generate proprietary-files.txt/.sha1 for an existing dump
+    Proprietary {
+        /// Dump root
+        dump: PathBuf,
+    },
+    /// Generate TWRP/AOSP device trees from an existing dump
+    DeviceTree {
+        /// Dump root (the directory containing system/, vendor/, boot.img, ...)
+        dump: PathBuf,
+        /// Only generate the TWRP tree
+        #[arg(long)]
+        twrp: bool,
+        /// Only generate the AOSP tree
+        #[arg(long)]
+        aosp: bool,
     },
     /// Print boot/vendor_boot image info (supports header v0 through v4)
     Info {
@@ -144,6 +164,19 @@ fn main() -> Result<()> {
                 partitions,
             };
             pipeline::Pipeline::new(opts)?.run()?;
+        }
+        Commands::Proprietary { dump } => {
+            let store = props::PropStore::load(&dump)?;
+            let meta = props::extract_metadata(&store, None);
+            proprietary::generate(&dump, &meta, &meta.description)?;
+        }
+        Commands::DeviceTree { dump, twrp, aosp } => {
+            let do_twrp = twrp || !aosp;
+            let do_aosp = aosp || !twrp;
+            device_tree::generate(
+                &dump,
+                &device_tree::DeviceTreeOptions { twrp: do_twrp, aosp: do_aosp },
+            )?;
         }
         Commands::Info { image } => {
             let img = bootimg::BootImage::parse(&image)?;

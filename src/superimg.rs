@@ -45,7 +45,7 @@ pub struct Extent {
     pub target_source: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Group {
     pub name: String,
     pub flags: u32,
@@ -75,6 +75,7 @@ pub struct PartitionInfo {
     pub name: String,
     pub size: u64,
     pub attributes: String,
+    pub group: String,
     pub extents: Vec<ExtentInfo>,
 }
 
@@ -345,6 +346,11 @@ pub fn partition_infos(meta: &Metadata) -> Vec<PartitionInfo> {
                 name: p.name.clone(),
                 size: partition_size(meta, p),
                 attributes: attributes_to_string(p.attributes),
+                group: meta
+                    .groups
+                    .get(p.group_index as usize)
+                    .map(|g| g.name.clone())
+                    .unwrap_or_default(),
                 extents: meta.extents[start.min(meta.extents.len())..end.min(meta.extents.len())]
                     .iter()
                     .map(|e| ExtentInfo {

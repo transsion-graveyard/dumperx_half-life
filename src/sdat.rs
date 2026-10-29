@@ -29,7 +29,13 @@ fn parse_rangeset(text: &str) -> Result<Vec<Range>> {
                 .with_context(|| format!("invalid range integer '{s}'"))
         })
         .collect::<Result<Vec<_>>>()?;
-    if nums.is_empty() || nums.len() != nums[0] as usize + 1 || nums.len() % 2 == 0 {
+    // The first number is the count of following integers (two per
+    // range), e.g. "4,0,2,5,7" describes ranges 0..2 and 5..7.
+    if nums.is_empty()
+        || nums.len() != nums[0] as usize + 1
+        || nums[0] < 0
+        || nums[0] % 2 != 0
+    {
         bail!("invalid range set '{text}'");
     }
     let mut ranges = Vec::new();
@@ -173,7 +179,7 @@ mod tests {
 
     #[test]
     fn parses_rangeset() {
-        let ranges = parse_rangeset("2,0,2,5,7").unwrap();
+        let ranges = parse_rangeset("4,0,2,5,7").unwrap();
         assert_eq!(ranges.len(), 2);
         assert_eq!((ranges[0].begin, ranges[0].end), (0, 2));
         assert_eq!((ranges[1].begin, ranges[1].end), (5, 7));
@@ -186,7 +192,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let transfer = dir.join("system.transfer.list");
         let new_data = dir.join("system.new.dat");
-        std::fs::write(&transfer, "4\n2\n0\n0\nnew 1,0,2\n").unwrap();
+        std::fs::write(&transfer, "4\n2\n0\n0\nnew 2,0,2\n").unwrap();
         let mut raw = vec![0u8; 4096 * 2];
         raw[..4].copy_from_slice(b"ABCD");
         std::fs::write(&new_data, &raw).unwrap();

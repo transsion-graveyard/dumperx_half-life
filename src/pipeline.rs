@@ -2,11 +2,14 @@
 
 use crate::archive;
 use crate::bootimg::{self, BootImage};
+use crate::device_tree::{self, DeviceTreeOptions};
 use crate::fsimage::{self, FsType};
 use crate::fstab::FstabSet;
 use crate::ikconfig;
+use crate::legacy;
 use crate::payload;
-use crate::props::{self, PropStore};
+use crate::props::{self, DeviceMetadata, PropStore};
+use crate::proprietary;
 use crate::ramdisk;
 use crate::sdat;
 use crate::sha1sum;
@@ -225,6 +228,17 @@ impl Pipeline {
             }
         }
 
+        // Vendor-specific formats (vendored offline tools; Rust ports follow).
+        for file in &files {
+            let head = util::read_head(file, 16).unwrap_or_default();
+            if let Some(format) = legacy::detect(file, &head) {
+                let sub = staging.join(format!("legacy-{}", util::stem(file)));
+                util::remove_dir_all(&sub);
+                legacy::extract(format, file, &sub, staging)?;
+                self.process_tree(&sub, staging, depth)?;
+            }
+        }
+
         // dtbo.
         for file in &files {
             let name = file.file_name().unwrap_or_default().to_string_lossy().to_string();
@@ -315,6 +329,17 @@ impl Pipeline {
             superimg::SlotMode::Auto,
             &self.opts.partitions,
             false,
+        )?;
+        let partition_infos = superimg::partition_infos(&meta);
+        let super_info = serde_json::json!({
+            "version": format!("{}.{}", meta.major, meta.minor),
+            "size": fs::metadata(&raw).map(|m| m.len()).unwrap_or(0),
+            "groups": meta.groups,
+            "partitions": partition_infos,
+        });
+        fs::write(
+            self.opts.out.join("super-info.json"),
+            serde_json::to_string_pretty(&super_info)?,
         )?;
         for (name, path, size) in &results {
             util::info(format!(
@@ -656,7 +681,7 @@ impl Pipeline {
         Ok(())
     }
 
-    fn write_metadata(&self) -> Result<()> {
+    fn write_metadata(&self) -> Result<DeviceMetadata> {
         util::step("Reading build properties");
         let store = PropStore::load(&self.opts.out)?;
         if store.files.is_empty() {
@@ -693,7 +718,7 @@ impl Pipeline {
         );
         fs::write(self.opts.out.join("README.md"), &readme)?;
         print!("{readme}");
-        Ok(())
+        Ok(meta)
     }
 
     fn finalize(&mut self) -> Result<()> {
@@ -721,7 +746,18 @@ impl Pipeline {
             }
         }
 
-        self.write_metadata()?;
+        let meta = self.write_metadata()?;
+        proprietary::generate(&self.opts.out, &meta, &meta.description)?;
+
+        if self.opts.device_tree {
+            util::step("Generating device trees");
+            let do_twrp = self.opts.twrp || !self.opts.aosp;
+            let do_aosp = self.opts.aosp || !self.opts.twrp;
+            device_tree::generate(
+                &self.opts.out,
+                &DeviceTreeOptions { twrp: do_twrp, aosp: do_aosp },
+            )?;
+        }
 
         util::step("Generating manifests");
         sha1sum::write_all_files(&self.opts.out)?;

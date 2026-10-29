@@ -382,7 +382,15 @@ impl FstabSet {
                 continue;
             }
             let name = entry.file_name().to_string_lossy();
-            if !name.starts_with("fstab") {
+            // Accept `fstab` and `fstab.<anything>` but reject generated
+            // reports and backups that merely start with "fstab".
+            if name != "fstab" && !name.starts_with("fstab.") {
+                continue;
+            }
+            if [".json", ".txt", ".bak", ".orig", ".rej"]
+                .iter()
+                .any(|suffix| name.ends_with(suffix))
+            {
                 continue;
             }
             // Only accept real fstab locations: */etc/fstab*,

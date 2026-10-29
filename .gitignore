@@ -12,3 +12,4 @@ __pycache__
 .work/
 target/
 /out/
+utils/vendor/android_tools/working/
