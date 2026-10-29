@@ -118,7 +118,7 @@ impl Pipeline {
             .to_string();
 
         if sparse::is_sparse(&head) {
-            let raw = staging.join(format!("{}.raw", util::stem(input)));
+            let raw = staging.join(format!("{}.img", util::stem(input)));
             util::info(format!("converting sparse image {}", input.display()));
             sparse::unsparse(input, &raw)?;
             return Ok(staging.to_path_buf());
@@ -169,6 +169,21 @@ impl Pipeline {
         for file in files.clone() {
             let name = file.file_name().unwrap_or_default().to_string_lossy();
             let lower = name.to_ascii_lowercase();
+            let head = util::read_head(&file, 8).unwrap_or_default();
+            if sparse::is_sparse(&head) {
+                let output = staging.join(name.as_ref());
+                let tmp = staging.join(format!(".{name}.unsparsing"));
+                util::info(format!("converting sparse image {}", file.display()));
+                sparse::unsparse(&file, &tmp)?;
+                // If the sparse file already lives in staging, replace it;
+                // never delete a file from the user's input tree.
+                if file == output {
+                    fs::remove_file(&file)?;
+                }
+                fs::rename(&tmp, &output)?;
+                extra.push(output);
+                continue;
+            }
             if lower.ends_with(".lz4") {
                 let Some(lz4) = util::find_tool("lz4") else {
                     util::warn(format!("lz4 not found; cannot decompress {}", file.display()));
@@ -275,6 +290,7 @@ impl Pipeline {
                 let n = p.file_name().unwrap_or_default().to_string_lossy();
                 n == "super.img"
                     || (n.starts_with("super") && n.ends_with(".img"))
+                    || (n.starts_with("super.") && !n.ends_with(".raw"))
                     || (n.contains("super") && n.contains("chunk"))
             })
             .cloned()
@@ -377,7 +393,13 @@ impl Pipeline {
                 if dest.exists() {
                     continue;
                 }
-                util::copy_file(file, &dest)?;
+                let head = util::read_head(file, 8).unwrap_or_default();
+                if sparse::is_sparse(&head) {
+                    util::info(format!("converting sparse image {}", file.display()));
+                    sparse::unsparse(file, &dest)?;
+                } else {
+                    util::copy_file(file, &dest)?;
+                }
             }
         }
         *depth -= 1;
@@ -721,6 +743,17 @@ impl Pipeline {
             if KEEP_IMAGES.contains(&name.as_str()) || name == "super" {
                 continue;
             }
+            let head = util::read_head(&image, 8).unwrap_or_default();
+            let image = if sparse::is_sparse(&head) {
+                let raw = image.with_extension("raw.img");
+                util::info(format!("converting sparse image {}", image.display()));
+                sparse::unsparse(&image, &raw)?;
+                let _ = fs::remove_file(&image);
+                fs::rename(&raw, &image)?;
+                image
+            } else {
+                image
+            };
             let out_dir = self.opts.out.join(&name);
             let hint = hints.get(&name).and_then(|v| {
                 v.iter().find_map(|fs| match fs.as_str() {
@@ -971,4 +1004,46 @@ fn kernel_version_from(out: &Path) -> Option<String> {
         }
     }
     None
+}
+
+
+/// Compare filenames with embedded numbers naturally (super.img.2 before
+/// super.img.10).
+fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let mut ai = a.chars().peekable();
+    let mut bi = b.chars().peekable();
+    loop {
+        match (ai.peek().copied(), bi.peek().copied()) {
+            (None, None) => return std::cmp::Ordering::Equal,
+            (None, Some(_)) => return std::cmp::Ordering::Less,
+            (Some(_), None) => return std::cmp::Ordering::Greater,
+            (Some(ac), Some(bc)) if ac.is_ascii_digit() && bc.is_ascii_digit() => {
+                let mut an = String::new();
+                while let Some(c) = ai.peek().copied().filter(|c| c.is_ascii_digit()) {
+                    an.push(c);
+                    ai.next();
+                }
+                let mut bn = String::new();
+                while let Some(c) = bi.peek().copied().filter(|c| c.is_ascii_digit()) {
+                    bn.push(c);
+                    bi.next();
+                }
+                let av: u128 = an.parse().unwrap_or(0);
+                let bv: u128 = bn.parse().unwrap_or(0);
+                match av.cmp(&bv) {
+                    std::cmp::Ordering::Equal => continue,
+                    other => return other,
+                }
+            }
+            (Some(ac), Some(bc)) => {
+                match ac.cmp(&bc) {
+                    std::cmp::Ordering::Equal => {
+                        ai.next();
+                        bi.next();
+                    }
+                    other => return other,
+                }
+            }
+        }
+    }
 }
