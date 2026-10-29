@@ -1,7 +1,7 @@
 //! Spreadtrum/Unisoc `.pac` firmware extraction.
 
 use crate::util;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -43,9 +43,7 @@ pub fn extract(path: &Path, out_dir: &Path) -> Result<Vec<(String, u64)>> {
     let lo_size = u32_at(&header, 48)? as u64;
     let declared_size = (hi_size << 32) | lo_size;
     if declared_size != file_size {
-        bail!(
-            "PAC size mismatch: header says {declared_size}, file is {file_size}"
-        );
+        bail!("PAC size mismatch: header says {declared_size}, file is {file_size}");
     }
     let partition_count = u32_at(&header, 1076)? as u64;
     let list_start = u32_at(&header, 1080)? as u64;
@@ -96,8 +94,8 @@ pub fn extract(path: &Path, out_dir: &Path) -> Result<Vec<(String, u64)>> {
         }
         let out_path = out_dir.join(&entry.name);
         file.seek(SeekFrom::Start(entry.data_offset))?;
-        let mut out = File::create(&out_path)
-            .with_context(|| format!("creating {}", out_path.display()))?;
+        let mut out =
+            File::create(&out_path).with_context(|| format!("creating {}", out_path.display()))?;
         let copied = std::io::copy(&mut Read::by_ref(&mut file).take(entry.size), &mut out)?;
         out.flush()?;
         if copied != entry.size {

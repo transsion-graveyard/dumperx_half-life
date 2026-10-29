@@ -124,6 +124,7 @@ dumprx proprietary out              # regenerate proprietary-files.{txt,sha1}
     --no-device-tree     skip TWRP/AOSP device-tree generation
     --twrp               generate the TWRP tree
     --aosp               generate the AOSP/LineageOS tree
+    --strict-fstab       make fstab parse errors fatal
 -v, --verbose            log external commands
 ```
 

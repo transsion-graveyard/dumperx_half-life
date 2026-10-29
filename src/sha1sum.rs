@@ -7,8 +7,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 pub fn sha1_file(path: &Path) -> Result<String> {
-    let mut file = fs::File::open(path)
-        .with_context(|| format!("opening {}", path.display()))?;
+    let mut file = fs::File::open(path).with_context(|| format!("opening {}", path.display()))?;
     let mut hasher = Sha1::new();
     let mut buf = vec![0u8; 1024 * 1024];
     loop {
@@ -114,7 +113,10 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("a.txt");
         std::fs::write(&path, b"abc").unwrap();
-        assert_eq!(sha1_file(&path).unwrap(), "a9993e364706816aba3e25717850c26c9cd0d89d");
+        assert_eq!(
+            sha1_file(&path).unwrap(),
+            "a9993e364706816aba3e25717850c26c9cd0d89d"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

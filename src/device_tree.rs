@@ -138,11 +138,7 @@ fn report_selection(images: &SelectedImages) {
         }
     }
     match &images.dtb {
-        Some(path) => util::info(format!(
-            "  dtb: {} ({})",
-            path.display(),
-            images.dtb_source
-        )),
+        Some(path) => util::info(format!("  dtb: {} ({})", path.display(), images.dtb_source)),
         None => util::info("  dtb: not present in boot/vendor_boot"),
     }
     match &images.dtbo {
@@ -240,10 +236,7 @@ fn select_images(dump_root: &Path, fstab_set: &FstabSet) -> Result<SelectedImage
             BootImage::Boot { header, .. } => {
                 if header.header_version < 3 {
                     out.pagesize = header.page_size;
-                    out.base = header
-                        .kernel_load_address
-                        .saturating_sub(0x8000)
-                        as u64;
+                    out.base = header.kernel_load_address.saturating_sub(0x8000) as u64;
                     if out.cmdline.is_empty() {
                         out.cmdline = format!("{}{}", header.cmdline, header.extra_cmdline);
                     }
@@ -261,8 +254,7 @@ fn select_images(dump_root: &Path, fstab_set: &FstabSet) -> Result<SelectedImage
             BootImage::VendorBoot { header, .. } => {
                 out.pagesize = header.page_size;
                 if header.kernel_load_address >= 0x8000 {
-                    base_candidates
-                        .push((priority, header.kernel_load_address - 0x8000));
+                    base_candidates.push((priority, header.kernel_load_address - 0x8000));
                 }
                 if out.cmdline.is_empty() {
                     out.cmdline = header.cmdline.clone();
@@ -271,10 +263,7 @@ fn select_images(dump_root: &Path, fstab_set: &FstabSet) -> Result<SelectedImage
         }
 
         let raw_kernel = dump_root.join(name).join("raw").join("kernel");
-        if out.kernel.is_none()
-            && raw_kernel.is_file()
-            && fs::metadata(&raw_kernel)?.len() > 0
-        {
+        if out.kernel.is_none() && raw_kernel.is_file() && fs::metadata(&raw_kernel)?.len() > 0 {
             out.kernel = Some(raw_kernel);
             out.kernel_source = format!("{name}.img");
         }
@@ -319,12 +308,10 @@ fn select_images(dump_root: &Path, fstab_set: &FstabSet) -> Result<SelectedImage
                         .unwrap_or_default()
                         .to_string_lossy()
                         .into_owned();
-                    out.ramdisk_dirs
-                        .push((format!("{name}.img:{label}"), sub));
+                    out.ramdisk_dirs.push((format!("{name}.img:{label}"), sub));
                 }
             } else {
-                out.ramdisk_dirs
-                    .push((format!("{name}.img"), ramdisk_dir));
+                out.ramdisk_dirs.push((format!("{name}.img"), ramdisk_dir));
             }
         }
     }
@@ -372,7 +359,10 @@ fn select_images(dump_root: &Path, fstab_set: &FstabSet) -> Result<SelectedImage
                 let group = out.super_group.clone();
                 for part in parts {
                     let name = part.get("name").and_then(Value::as_str).unwrap_or_default();
-                    let part_group = part.get("group").and_then(Value::as_str).unwrap_or_default();
+                    let part_group = part
+                        .get("group")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
                     if group.is_empty() || part_group == group {
                         let base = util::base_partition(name).to_string();
                         if !out.dynamic_partitions.contains(&base) {
@@ -478,7 +468,9 @@ fn kernel_block(dev: &DeviceContext, twrp: bool) -> String {
     }
     if img.header_version != 0 {
         if twrp {
-            out.push_str("BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOTIMG_HEADER_VERSION)\n");
+            out.push_str(
+                "BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOTIMG_HEADER_VERSION)\n",
+            );
         } else {
             out.push_str("BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOT_HEADER_VERSION)\n");
         }
@@ -507,7 +499,9 @@ fn kernel_block(dev: &DeviceContext, twrp: bool) -> String {
             "TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilts/kernel\n"
         });
     } else {
-        out.push_str("# NOTE: no kernel found in boot/vendor_kernel_boot; prebuilt kernel omitted\n");
+        out.push_str(
+            "# NOTE: no kernel found in boot/vendor_kernel_boot; prebuilt kernel omitted\n",
+        );
     }
     if img.dtb.is_some() {
         if twrp {
@@ -590,7 +584,9 @@ fn partition_block(dev: &DeviceContext, twrp: bool) -> String {
                 img.super_size
             ));
         } else {
-            out.push_str("BOARD_SUPER_PARTITION_SIZE := 9126805504 # TODO: verify from super metadata\n");
+            out.push_str(
+                "BOARD_SUPER_PARTITION_SIZE := 9126805504 # TODO: verify from super metadata\n",
+            );
         }
         let group = format!("{}_dynamic_partitions", dev.manufacturer);
         out.push_str(&format!("BOARD_SUPER_PARTITION_GROUPS := {group}\n"));
@@ -598,10 +594,13 @@ fn partition_block(dev: &DeviceContext, twrp: bool) -> String {
         out.push_str(&format!(
             "BOARD_{upper}_DYNAMIC_PARTITIONS_PARTITION_LIST := \\\n"
         ));
-        for part in &img.dynamic_partitions {
-            out.push_str(&format!("    {part} \\\n"));
+        for (index, part) in img.dynamic_partitions.iter().enumerate() {
+            if index + 1 == img.dynamic_partitions.len() {
+                out.push_str(&format!("    {part}\n"));
+            } else {
+                out.push_str(&format!("    {part} \\\n"));
+            }
         }
-        out.push('\n');
         if img.super_group_size > 0 {
             out.push_str(&format!(
                 "BOARD_{upper}_DYNAMIC_PARTITIONS_SIZE := {}\n",
@@ -768,13 +767,18 @@ LOCAL_PATH := device/{manufacturer}/{codename}
 PRODUCT_COPY_FILES += \\
     $(LOCAL_PATH)/rootdir/etc/{fstab}:$(TARGET_COPY_OUT_VENDOR)/etc/{fstab}
 
-$(call inherit-product, vendor/{manufacturer}/{codename}/{codename}-vendor.mk)
+$(call inherit-product-if-exists, vendor/{manufacturer}/{codename}/{codename}-vendor.mk)
 ",
             manufacturer = dev.manufacturer,
             codename = dev.codename,
             fstab = dev
                 .fstab
-                .map(|f| f.path.file_name().unwrap_or_default().to_string_lossy().into_owned())
+                .map(|f| f
+                    .path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned())
                 .unwrap_or_else(|| "fstab".to_string()),
         ),
     )?;
@@ -782,10 +786,7 @@ $(call inherit-product, vendor/{manufacturer}/{codename}/{codename}-vendor.mk)
     copy_prebuilts(dev, &root.join("prebuilts"), false)?;
     copy_props(dev, root)?;
     copy_rootdir(dev, root)?;
-    fs::write(
-        root.join("README.md"),
-        tree_readme(dev, "AOSP/LineageOS"),
-    )?;
+    fs::write(root.join("README.md"), tree_readme(dev, "AOSP/LineageOS"))?;
     Ok(())
 }
 
@@ -1095,7 +1096,10 @@ fn twrp_fstab(fstab: &FstabFile) -> String {
         if mount == "/data" {
             extra.push_str(";wipeingui;wipeduringinstall;length=-16384");
         }
-        out.push_str(&format!("{mount} {} {device} {flags} {extra}\n", entry.fs_type));
+        out.push_str(&format!(
+            "{mount} {} {device} {flags} {extra}\n",
+            entry.fs_type
+        ));
     }
     out
 }

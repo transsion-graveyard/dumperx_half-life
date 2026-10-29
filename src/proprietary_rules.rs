@@ -8,18 +8,124 @@ pub struct Rule {
     pub hardware: &'static [&'static str],
 }
 
-pub const SECTION_ORDER: &[&str] = &["ADSP", "ADSP-Modules", "Alarm", "ANT", "Atrace", "Audio", "Audio-ACDB", "Audio-configs", "Audio-Hardware", "Bluetooth", "Bluetooth-AptX", "Camera", "Camera-actuators", "Camera-arcsoft", "Camera-bin", "Camera-chromatix", "Camera-configs", "Camera-firmware", "Camera-motor", "Camera-ois", "Camera-sensors", "CDSP", "Charger", "Configstore", "Consumerir", "CNE", "CVP", "Display", "Display-calibration", "Display-Hardware", "Power-Hardware", "Dolby", "DPM", "DRM", "DRM-Hardware", "DRM-HDCP", "DRM-Qteeconnector", "DRM-Widevine", "DTS", "ESE-Powermanager", "Factory", "Fido", "Fingerprint", "Firmware", "FM", "Gatekeeper", "Google", "GPS", "Graphics", "Health", "HotwordEnrollment", "IFAA", "IPA-Firmware", "Keymaster", "Latency", "Lights", "Listen", "Machine-Learning", "Media", "Mediatek", "Meizu", "Motorola", "NFC", "Neural-networks", "Novatek", "OnePlus", "Oppo", "Oplus", "Pasrmanager", "Perf", "Perf-IOP", "Peripheral", "Postprocessing", "Qdutils", "QMI", "Radio", "Radio-IMS", "Samsung", "SCVE", "Seccam", "Sensors", "Sensor-calibrate", "Sensor-configs", "Sony", "Soter", "SSR", "Thermal", "Thermal-Hardware", "Touch-improve", "Touchscreen", "TUI", "UBWC", "Vibrator", "Vivo", "Voice", "VR", "WFD", "WiFi", "Xiaomi"];
+pub const SECTION_ORDER: &[&str] = &[
+    "ADSP",
+    "ADSP-Modules",
+    "Alarm",
+    "ANT",
+    "Atrace",
+    "Audio",
+    "Audio-ACDB",
+    "Audio-configs",
+    "Audio-Hardware",
+    "Bluetooth",
+    "Bluetooth-AptX",
+    "Camera",
+    "Camera-actuators",
+    "Camera-arcsoft",
+    "Camera-bin",
+    "Camera-chromatix",
+    "Camera-configs",
+    "Camera-firmware",
+    "Camera-motor",
+    "Camera-ois",
+    "Camera-sensors",
+    "CDSP",
+    "Charger",
+    "Configstore",
+    "Consumerir",
+    "CNE",
+    "CVP",
+    "Display",
+    "Display-calibration",
+    "Display-Hardware",
+    "Power-Hardware",
+    "Dolby",
+    "DPM",
+    "DRM",
+    "DRM-Hardware",
+    "DRM-HDCP",
+    "DRM-Qteeconnector",
+    "DRM-Widevine",
+    "DTS",
+    "ESE-Powermanager",
+    "Factory",
+    "Fido",
+    "Fingerprint",
+    "Firmware",
+    "FM",
+    "Gatekeeper",
+    "Google",
+    "GPS",
+    "Graphics",
+    "Health",
+    "HotwordEnrollment",
+    "IFAA",
+    "IPA-Firmware",
+    "Keymaster",
+    "Latency",
+    "Lights",
+    "Listen",
+    "Machine-Learning",
+    "Media",
+    "Mediatek",
+    "Meizu",
+    "Motorola",
+    "NFC",
+    "Neural-networks",
+    "Novatek",
+    "OnePlus",
+    "Oppo",
+    "Oplus",
+    "Pasrmanager",
+    "Perf",
+    "Perf-IOP",
+    "Peripheral",
+    "Postprocessing",
+    "Qdutils",
+    "QMI",
+    "Radio",
+    "Radio-IMS",
+    "Samsung",
+    "SCVE",
+    "Seccam",
+    "Sensors",
+    "Sensor-calibrate",
+    "Sensor-configs",
+    "Sony",
+    "Soter",
+    "SSR",
+    "Thermal",
+    "Thermal-Hardware",
+    "Touch-improve",
+    "Touchscreen",
+    "TUI",
+    "UBWC",
+    "Vibrator",
+    "Vivo",
+    "Voice",
+    "VR",
+    "WFD",
+    "WiFi",
+    "Xiaomi",
+];
 
 pub const RULES: &[Rule] = &[
     Rule {
         section: "ADSP",
-        include_groups: &["vendor/lib/|vendor/lib64/|bin/adsprpcd", "libadsp|ibfastcv|adsprpc|mdsprpc|sdsprpc"],
+        include_groups: &[
+            "vendor/lib/|vendor/lib64/|bin/adsprpcd",
+            "libadsp|ibfastcv|adsprpc|mdsprpc|sdsprpc",
+        ],
         excludes: &["scve", "lib/rfsa/adsp"],
         hardware: &[],
     },
     Rule {
         section: "ADSP",
-        include_groups: &["odm/lib/|odm/lib64/|bin/adsprpcd", "libadsp|ibfastcv|adsprpc|mdsprpc|sdsprpc"],
+        include_groups: &[
+            "odm/lib/|odm/lib64/|bin/adsprpcd",
+            "libadsp|ibfastcv|adsprpc|mdsprpc|sdsprpc",
+        ],
         excludes: &["scve", "lib/rfsa/adsp"],
         hardware: &[],
     },
@@ -73,7 +179,10 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "Audio",
-        include_groups: &["vendor/", "libtinycompress|tfa98xx|libsrsprocessing|libaudio|libacdb|libdirac|etc/dirac|etc/sony_effect/|etc/drc/|etc/surround_sound_3mic/"],
+        include_groups: &[
+            "vendor/",
+            "libtinycompress|tfa98xx|libsrsprocessing|libaudio|libacdb|libdirac|etc/dirac|etc/sony_effect/|etc/drc/|etc/surround_sound_3mic/",
+        ],
         excludes: &["lib/rfsa/adsp", "lib/modules/"],
         hardware: &[],
     },
@@ -109,7 +218,10 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "Audio-Hardware",
-        include_groups: &["vendor/lib/|vendor/lib64/", "libaudio_log_utils.so|libtinycompress_vendor.so|libqcompostprocbundle.so|libqcomvisualizer.so|libqcomvoiceprocessing.so|libvolumelistener.so"],
+        include_groups: &[
+            "vendor/lib/|vendor/lib64/",
+            "libaudio_log_utils.so|libtinycompress_vendor.so|libqcompostprocbundle.so|libqcomvisualizer.so|libqcomvoiceprocessing.so|libvolumelistener.so",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -117,12 +229,25 @@ pub const RULES: &[Rule] = &[
         section: "Bluetooth",
         include_groups: &[],
         excludes: &[],
-        hardware: &["hardware.bluetooth", "hw/bluetooth", "com.qualcomm.qti.bluetooth_audio", "hardware.btconfigstore"],
+        hardware: &[
+            "hardware.bluetooth",
+            "hw/bluetooth",
+            "com.qualcomm.qti.bluetooth_audio",
+            "hardware.btconfigstore",
+        ],
     },
     Rule {
         section: "Bluetooth",
-        include_groups: &["vendor/", "libbthost_if|btnvtool|hci_qcomm_init|wcnss_filter|bluetooth|libbt|btconfigstore"],
-        excludes: &["vendor/etc/permissions", "libbthost_if", "overlay/", "bluetooth_qti_audio_policy_configuration.xml"],
+        include_groups: &[
+            "vendor/",
+            "libbthost_if|btnvtool|hci_qcomm_init|wcnss_filter|bluetooth|libbt|btconfigstore",
+        ],
+        excludes: &[
+            "vendor/etc/permissions",
+            "libbthost_if",
+            "overlay/",
+            "bluetooth_qti_audio_policy_configuration.xml",
+        ],
         hardware: &[],
     },
     Rule {
@@ -175,7 +300,9 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "Camera-configs",
-        include_groups: &["vendor/etc/camera|vendor/etc/qvr/|vendor/camera3rd/|vendor/camera_sound|vendor/etc/FLASH_ON/|vendor/etc/IMX|vendor/camera/"],
+        include_groups: &[
+            "vendor/etc/camera|vendor/etc/qvr/|vendor/camera3rd/|vendor/camera_sound|vendor/etc/FLASH_ON/|vendor/etc/IMX|vendor/camera/",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -199,13 +326,19 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "Camera",
-        include_groups: &["vendor/", "libcam|libmtkcam|libDepthBokeh|libSonyDual|libtriplecam|libremosaic|lib/camera/|lib/mtkcam/|lib64/camera/|lib64/mtkcam/|mibokeh|lib_camera|libgcam|libdualcam|libmakeup|libtriplecam|SuperSensor|SonyIMX|libmialgo|libsnpe"],
+        include_groups: &[
+            "vendor/",
+            "libcam|libmtkcam|libDepthBokeh|libSonyDual|libtriplecam|libremosaic|lib/camera/|lib/mtkcam/|lib64/camera/|lib64/mtkcam/|mibokeh|lib_camera|libgcam|libdualcam|libmakeup|libtriplecam|SuperSensor|SonyIMX|libmialgo|libsnpe",
+        ],
         excludes: &["vendor/lib/rfsa/adsp/"],
         hardware: &[],
     },
     Rule {
         section: "Camera",
-        include_groups: &["odm/", "mipi_raw|mipi_mono|libal|libAl|libEIS|libanc|libai|lib2D|libap|libBokeh|libop|libimg|libocam|libst|libFace|libWater|libcam|libDepthBokeh|libSonyDual|libtriplecam|libremosaic|lib/camera/|lib64/camera/|mibokeh|lib_camera|libgcam|libdualcam|libmakeup|libtriplecam|SuperSensor|SonyIMX|libmialgo|libsnpe"],
+        include_groups: &[
+            "odm/",
+            "mipi_raw|mipi_mono|libal|libAl|libEIS|libanc|libai|lib2D|libap|libBokeh|libop|libimg|libocam|libst|libFace|libWater|libcam|libDepthBokeh|libSonyDual|libtriplecam|libremosaic|lib/camera/|lib64/camera/|mibokeh|lib_camera|libgcam|libdualcam|libmakeup|libtriplecam|SuperSensor|SonyIMX|libmialgo|libsnpe",
+        ],
         excludes: &["odm/lib/rfsa/adsp/"],
         hardware: &[],
     },
@@ -217,7 +350,10 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "Camera",
-        include_groups: &["odm/", "libml_util|liblvimfs|libmpbase|libnp|lib_rectify|libui|libSuperText|libhci_face|libFilter|libOGL|libyuv2|libXDoc|libhyper|libCOp|libcolor|libcoolex|libc++|libPerfect|libRbs|libDeVIS|libPolar|libtf|libmegface|libMegvii|libFDClite|libcore|libVD|libcapi|libextawb|libnti_"],
+        include_groups: &[
+            "odm/",
+            "libml_util|liblvimfs|libmpbase|libnp|lib_rectify|libui|libSuperText|libhci_face|libFilter|libOGL|libyuv2|libXDoc|libhyper|libCOp|libcolor|libcoolex|libc++|libPerfect|libRbs|libDeVIS|libPolar|libtf|libmegface|libMegvii|libFDClite|libcore|libVD|libcapi|libextawb|libnti_",
+        ],
         excludes: &["odm/lib/rfsa/adsp/"],
         hardware: &[],
     },
@@ -241,7 +377,10 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "CDSP",
-        include_groups: &["vendor/", "cdsprpc|libcdsp|libsdsprpc|libfastrpc|libsdsprpc|libsysmon"],
+        include_groups: &[
+            "vendor/",
+            "cdsprpc|libcdsp|libsdsprpc|libfastrpc|libsdsprpc|libsysmon",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -261,7 +400,10 @@ pub const RULES: &[Rule] = &[
         section: "Configstore",
         include_groups: &[],
         excludes: &[],
-        hardware: &["hardware.configstore", "vendor.qti.hardware.capabilityconfigstore"],
+        hardware: &[
+            "hardware.configstore",
+            "vendor.qti.hardware.capabilityconfigstore",
+        ],
     },
     Rule {
         section: "Consumerir",
@@ -277,7 +419,9 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "CNE",
-        include_groups: &["etc/permissions/cneapiclient.xml|etc/permissions/com.quicinc.cne.xml|priv-app/CNEService/CNEService.apk|etc/cne/|vendor.qti.hardware.data|vendor.qti.data"],
+        include_groups: &[
+            "etc/permissions/cneapiclient.xml|etc/permissions/com.quicinc.cne.xml|priv-app/CNEService/CNEService.apk|etc/cne/|vendor.qti.hardware.data|vendor.qti.data",
+        ],
         excludes: &["latency"],
         hardware: &[],
     },
@@ -289,7 +433,10 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "CNE",
-        include_groups: &["vendor/", "cne.server|vendor/etc/cne/|quicinc.cne.|cneapiclient|vendor.qti.hardware.data|libcne|vendor.qti.data|CneApp|IWlanService|init/cnd.rc|bin/cnd|libwms.so|libwqe.so|libxml.so"],
+        include_groups: &[
+            "vendor/",
+            "cne.server|vendor/etc/cne/|quicinc.cne.|cneapiclient|vendor.qti.hardware.data|libcne|vendor.qti.data|CneApp|IWlanService|init/cnd.rc|bin/cnd|libwms.so|libwqe.so|libxml.so",
+        ],
         excludes: &["latency"],
         hardware: &[],
     },
@@ -321,7 +468,16 @@ pub const RULES: &[Rule] = &[
         section: "Display-Hardware",
         include_groups: &[],
         excludes: &[],
-        hardware: &["frameworks.bufferhub", "hardware.display", "hardware.graphics", "hardware.memtrack", "vendor.display.config", "hw/gralloc", "hw/hwcomposer", "hw/memtrack"],
+        hardware: &[
+            "frameworks.bufferhub",
+            "hardware.display",
+            "hardware.graphics",
+            "hardware.memtrack",
+            "vendor.display.config",
+            "hw/gralloc",
+            "hw/hwcomposer",
+            "hw/memtrack",
+        ],
     },
     Rule {
         section: "Display-Hardware",
@@ -343,7 +499,9 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "DPM",
-        include_groups: &["dpm.api@|libdpm|bin/dpmd|etc/dpm/dpm.conf|etc/init/dpmd.rc|com.qti.dpmframework|dpmapi|framework/tcmclient.jar|priv-app/dpmserviceapp/dpmserviceapp.apk|vendor/bin/dpmQmiMgr"],
+        include_groups: &[
+            "dpm.api@|libdpm|bin/dpmd|etc/dpm/dpm.conf|etc/init/dpmd.rc|com.qti.dpmframework|dpmapi|framework/tcmclient.jar|priv-app/dpmserviceapp/dpmserviceapp.apk|vendor/bin/dpmQmiMgr",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -379,7 +537,9 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "DRM-Widevine",
-        include_groups: &["firmware/cppf|firmware/widevine|mediadrm/|qcdrm/|lib/libwvhidl.so|lib64/libwvhidl.so"],
+        include_groups: &[
+            "firmware/cppf|firmware/widevine|mediadrm/|qcdrm/|lib/libwvhidl.so|lib64/libwvhidl.so",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -427,13 +587,19 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "Fingerprint",
-        include_groups: &["vendor/", "fpctzappfingerprint|silead|libegis|biometrics|etc/qti_fp/|libgf_|fingerprint|goodix|cdfinger|qfp-daemon|init_qfp_daemon|libqfp|fp_hal|libsl_fp|libarm_proxy_skel|libhvx_proxy_stub"],
+        include_groups: &[
+            "vendor/",
+            "fpctzappfingerprint|silead|libegis|biometrics|etc/qti_fp/|libgf_|fingerprint|goodix|cdfinger|qfp-daemon|init_qfp_daemon|libqfp|fp_hal|libsl_fp|libarm_proxy_skel|libhvx_proxy_stub",
+        ],
         excludes: &["android.hardware.fingerprint.xml", "/usr/"],
         hardware: &[],
     },
     Rule {
         section: "Fingerprint",
-        include_groups: &["odm/", "fpctzappfingerprint|silead|libegis|biometrics|etc/qti_fp/|libgf_|fingerprint|goodix|cdfinger|qfp-daemon|init_qfp_daemon|libqfp|fp_hal|libsl_fp|libarm_proxy_skel|libhvx_proxy_stub"],
+        include_groups: &[
+            "odm/",
+            "fpctzappfingerprint|silead|libegis|biometrics|etc/qti_fp/|libgf_|fingerprint|goodix|cdfinger|qfp-daemon|init_qfp_daemon|libqfp|fp_hal|libsl_fp|libarm_proxy_skel|libhvx_proxy_stub",
+        ],
         excludes: &["android.hardware.fingerprint.xml", "/usr/"],
         hardware: &[],
     },
@@ -475,7 +641,9 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "GPS",
-        include_groups: &["etc/permissions/com.qti.location.sdk.xml|etc/permissions/com.qualcomm.location.xml|etc/permissions/izat.xt.srv.xml|etc/permissions/privapp-permissions-com.qualcomm.location.xml|framework/com.qti.location.sdk.jar|framework/izat.xt.srv.jar|lib64/liblocationservice_jni.so|lib64/libxt_native.so"],
+        include_groups: &[
+            "etc/permissions/com.qti.location.sdk.xml|etc/permissions/com.qualcomm.location.xml|etc/permissions/izat.xt.srv.xml|etc/permissions/privapp-permissions-com.qualcomm.location.xml|framework/com.qti.location.sdk.jar|framework/izat.xt.srv.jar|lib64/liblocationservice_jni.so|lib64/libxt_native.so",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -531,7 +699,11 @@ pub const RULES: &[Rule] = &[
         section: "Keymaster",
         include_groups: &[],
         excludes: &[],
-        hardware: &["hardware.keymaster", "hardware.wifi.keystore", "hw/keystore"],
+        hardware: &[
+            "hardware.keymaster",
+            "hardware.wifi.keystore",
+            "hw/keystore",
+        ],
     },
     Rule {
         section: "Keymaster",
@@ -589,7 +761,10 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "Media",
-        include_groups: &["lib/|lib64/", "extractors/libmmparser.so|libFileMux.so|libOmxMux.so|libmmosal.so|ibmmparser_lite.so|libmmrtpdecoder.so|libmmrtpencoder.so"],
+        include_groups: &[
+            "lib/|lib64/",
+            "extractors/libmmparser.so|libFileMux.so|libOmxMux.so|libmmosal.so|ibmmparser_lite.so|libmmrtpdecoder.so|libmmrtpencoder.so",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -625,19 +800,27 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "NFC",
-        include_groups: &["app/NxpNfcNci/NxpNfcNci.apk|app/NxpSecureElement/NxpSecureElement.apk|etc/nfcee_access.xml|etc/permissions/com.nxp.nfc.xml|framework/com.nxp.nfc.jar|libnxpnfc"],
+        include_groups: &[
+            "app/NxpNfcNci/NxpNfcNci.apk|app/NxpSecureElement/NxpSecureElement.apk|etc/nfcee_access.xml|etc/permissions/com.nxp.nfc.xml|framework/com.nxp.nfc.jar|libnxpnfc",
+        ],
         excludes: &["vendor/"],
         hardware: &[],
     },
     Rule {
         section: "NFC",
-        include_groups: &["vendor/", "libpn5|nfc|secure_element|etc/libese|nxp|libp61|ls_client"],
+        include_groups: &[
+            "vendor/",
+            "libpn5|nfc|secure_element|etc/libese|nxp|libp61|ls_client",
+        ],
         excludes: &["etc/permissions/android.hardware.nfc"],
         hardware: &[],
     },
     Rule {
         section: "NFC",
-        include_groups: &["odm/", "libpn5|nfc|secure_element|etc/libese|etc/sn100u|etc/init/init.SN100|nxp|libp61|ls_client|jcos_nq|ese_spi|ls_nq|se_nq|libchrome"],
+        include_groups: &[
+            "odm/",
+            "libpn5|nfc|secure_element|etc/libese|etc/sn100u|etc/init/init.SN100|nxp|libp61|ls_client|jcos_nq|ese_spi|ls_nq|se_nq|libchrome",
+        ],
         excludes: &["etc/permissions/android.hardware.nfc"],
         hardware: &[],
     },
@@ -679,7 +862,10 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "Oplus",
-        include_groups: &["odm/", "oplus|ffmpeg|orms|libav|libdav|libsw|dpservice|libdla|engineer|wifi|self-init|setgisprop|rpmb|bsp|devices_config"],
+        include_groups: &[
+            "odm/",
+            "oplus|ffmpeg|orms|libav|libdav|libsw|dpservice|libdla|engineer|wifi|self-init|setgisprop|rpmb|bsp|devices_config",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -775,13 +961,19 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "Radio",
-        include_groups: &["app/QtiTelephonyService/QtiTelephonyService.apk|app/datastatusnotification/datastatusnotification.apk|app/embms/embms.apk|etc/permissions/embms.xml|etc/permissions/privapp-permissions-qti.xml|etc/permissions/qcrilhook.xml|etc/permissions/telephonyservice.xml|etc/sysconfig/qti_whitelist.xml|priv-app/qcrilmsgtunnel/qcrilmsgtunnel.apk"],
+        include_groups: &[
+            "app/QtiTelephonyService/QtiTelephonyService.apk|app/datastatusnotification/datastatusnotification.apk|app/embms/embms.apk|etc/permissions/embms.xml|etc/permissions/privapp-permissions-qti.xml|etc/permissions/qcrilhook.xml|etc/permissions/telephonyservice.xml|etc/sysconfig/qti_whitelist.xml|priv-app/qcrilmsgtunnel/qcrilmsgtunnel.apk",
+        ],
         excludes: &[],
         hardware: &[],
     },
     Rule {
         section: "Radio",
-        include_groups: &["framework/", "QtiTelephonyServicelibrary|embmslibrary|qcnvitems|qcrilhook|qti-telephony-common", ".jar"],
+        include_groups: &[
+            "framework/",
+            "QtiTelephonyServicelibrary|embmslibrary|qcnvitems|qcrilhook|qti-telephony-common",
+            ".jar",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -795,11 +987,18 @@ pub const RULES: &[Rule] = &[
         section: "Radio-IMS",
         include_groups: &[],
         excludes: &[],
-        hardware: &["com.qualcomm.qti.imscmservice", "com.qualcomm.qti.uceservice", "radio.ims", "qti.ims"],
+        hardware: &[
+            "com.qualcomm.qti.imscmservice",
+            "com.qualcomm.qti.uceservice",
+            "radio.ims",
+            "qti.ims",
+        ],
     },
     Rule {
         section: "Radio-IMS",
-        include_groups: &["app/imssettings/imssettings.apk|etc/permissions/com.qualcomm.qti.imscmservice|app/uceShimService/uceShimService.apk"],
+        include_groups: &[
+            "app/imssettings/imssettings.apk|etc/permissions/com.qualcomm.qti.imscmservice|app/uceShimService/uceShimService.apk",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -811,13 +1010,18 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "Radio-IMS",
-        include_groups: &["lib/|lib64", "libdiag_system.so|librcc.so|lib-ims|libimscamera_jni|libimsmedia_jni|lib-dplmedia.so|lib-rtp|lib-siputility"],
+        include_groups: &[
+            "lib/|lib64",
+            "libdiag_system.so|librcc.so|lib-ims|libimscamera_jni|libimsmedia_jni|lib-dplmedia.so|lib-rtp|lib-siputility",
+        ],
         excludes: &["priv-app/"],
         hardware: &[],
     },
     Rule {
         section: "Radio-IMS",
-        include_groups: &["priv-app/ims/ims.apk|priv-app/imssettings/imssettings.apk|vendor/bin/ims_rtp_daemon|vendor/bin/imsdatadaemon|vendor/bin/imsqmidaemon|vendor/bin/imsrcsd|vendor/bin/ims_rtp_daemon"],
+        include_groups: &[
+            "priv-app/ims/ims.apk|priv-app/imssettings/imssettings.apk|vendor/bin/ims_rtp_daemon|vendor/bin/imsdatadaemon|vendor/bin/imsqmidaemon|vendor/bin/imsrcsd|vendor/bin/ims_rtp_daemon",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -830,7 +1034,11 @@ pub const RULES: &[Rule] = &[
     Rule {
         section: "Samsung",
         include_groups: &["vendor/", "samsung|SoundAlive"],
-        excludes: &["vendor/etc/qdcm_calib", "vendor/etc/dsi", "vendor/firmware/"],
+        excludes: &[
+            "vendor/etc/qdcm_calib",
+            "vendor/etc/dsi",
+            "vendor/firmware/",
+        ],
         hardware: &[],
     },
     Rule {
@@ -855,11 +1063,19 @@ pub const RULES: &[Rule] = &[
         section: "Sensors",
         include_groups: &[],
         excludes: &[],
-        hardware: &["hardware.sensors", "hw/activity_recognition", "hw/sensors", "sensors.virtual"],
+        hardware: &[
+            "hardware.sensors",
+            "hw/activity_recognition",
+            "hw/sensors",
+            "sensors.virtual",
+        ],
     },
     Rule {
         section: "Sensors",
-        include_groups: &["vendor/", "libsensor|lib64/sensors|lib/sensors|libAsusRGBSensorHAL|libssc|lib/sensors|lib64/sensors"],
+        include_groups: &[
+            "vendor/",
+            "libsensor|lib64/sensors|lib/sensors|libAsusRGBSensorHAL|libssc|lib/sensors|lib64/sensors",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -913,7 +1129,10 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "Thermal",
-        include_groups: &["vendor/", "etc/thermal|bin/thermal|libthermal|bin/mi_thermald|thermal"],
+        include_groups: &[
+            "vendor/",
+            "etc/thermal|bin/thermal|libthermal|bin/mi_thermald|thermal",
+        ],
         excludes: &["hw/thermal"],
         hardware: &[],
     },
@@ -999,11 +1218,17 @@ pub const RULES: &[Rule] = &[
         section: "WFD",
         include_groups: &[],
         excludes: &[],
-        hardware: &["hardware.sigma_miracast", "hardware.wifidisplaysession", "qti.wifidisplayhal"],
+        hardware: &[
+            "hardware.sigma_miracast",
+            "hardware.wifidisplaysession",
+            "qti.wifidisplayhal",
+        ],
     },
     Rule {
         section: "WFD",
-        include_groups: &["bin/wfdservice|etc/init/wfdservice.rc|etc/wfdconfig|framework/WfdCommon.jar|priv-app/WfdService/WfdService.apk"],
+        include_groups: &[
+            "bin/wfdservice|etc/init/wfdservice.rc|etc/wfdconfig|framework/WfdCommon.jar|priv-app/WfdService/WfdService.apk",
+        ],
         excludes: &[],
         hardware: &[],
     },
@@ -1015,7 +1240,10 @@ pub const RULES: &[Rule] = &[
     },
     Rule {
         section: "WFD",
-        include_groups: &["vendor/", "wifidisplayhal|wfdservice|libwfd|wfdconfig|miracast"],
+        include_groups: &[
+            "vendor/",
+            "wifidisplayhal|wfdservice|libwfd|wfdconfig|miracast",
+        ],
         excludes: &[],
         hardware: &[],
     },

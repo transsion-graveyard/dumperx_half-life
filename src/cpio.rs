@@ -1,9 +1,9 @@
 //! cpio (newc) ramdisk extraction.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
 use std::fs;
-use std::os::unix::fs::{symlink, PermissionsExt};
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Default)]
@@ -199,8 +199,14 @@ mod tests {
         assert_eq!(stats.files, 1);
         assert_eq!(stats.dirs, 1);
         assert_eq!(stats.symlinks, 1);
-        assert_eq!(std::fs::read_to_string(dir.join("etc/init.rc")).unwrap(), "on boot\n");
-        assert_eq!(std::fs::read_link(dir.join("init")).unwrap(), Path::new("/system/bin/init"));
+        assert_eq!(
+            std::fs::read_to_string(dir.join("etc/init.rc")).unwrap(),
+            "on boot\n"
+        );
+        assert_eq!(
+            std::fs::read_link(dir.join("init")).unwrap(),
+            Path::new("/system/bin/init")
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

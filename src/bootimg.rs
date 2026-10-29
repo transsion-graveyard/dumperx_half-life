@@ -5,7 +5,7 @@
 //! (vendor ramdisk table + bootconfig) directly from the AOSP layout in
 //! `system/tools/mkbootimg/include/bootimg/bootimg.h`.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{Cursor, Read, Seek, SeekFrom};
@@ -197,11 +197,7 @@ impl BootImage {
                         let _ = writeln!(out, "dtb_offset: {:#010x}", header.dtb_load_address);
                     }
                     let _ = writeln!(out, "board: '{}'", header.product_name);
-                    let _ = writeln!(
-                        out,
-                        "cmdline: '{}{}'",
-                        header.cmdline, header.extra_cmdline
-                    );
+                    let _ = writeln!(out, "cmdline: '{}{}'", header.cmdline, header.extra_cmdline);
                 } else {
                     let _ = writeln!(out, "pagesize: {BOOT_IMAGE_HEADER_V3_PAGESIZE}");
                     let _ = writeln!(out, "cmdline: '{}'", header.cmdline);
@@ -236,7 +232,11 @@ impl BootImage {
                     header.header_version
                 );
                 let _ = writeln!(out, "pagesize: {:#010x}", header.page_size);
-                let _ = writeln!(out, "kernel load address: {:#010x}", header.kernel_load_address);
+                let _ = writeln!(
+                    out,
+                    "kernel load address: {:#010x}",
+                    header.kernel_load_address
+                );
                 let _ = writeln!(
                     out,
                     "ramdisk load address: {:#010x}",
@@ -367,7 +367,10 @@ impl BootImage {
                     }
                     write("vendor_ramdisk_table.txt", manifest.as_bytes())?;
                 } else {
-                    write("vendor_ramdisk", ramdisks.first().map(Vec::as_slice).unwrap_or(&[]))?;
+                    write(
+                        "vendor_ramdisk",
+                        ramdisks.first().map(Vec::as_slice).unwrap_or(&[]),
+                    )?;
                 }
                 write("dtb", dtb)?;
             }
@@ -444,9 +447,7 @@ fn parse_boot(data: &[u8]) -> Result<BootImage> {
         cmdline = cstr_at(data, 44, 1536)?;
         if header_version >= 4 {
             if header_size < 1584 {
-                bail!(
-                    "header v4 image claims header_size {header_size}, expected at least 1584"
-                );
+                bail!("header v4 image claims header_size {header_size}, expected at least 1584");
             }
             signature_size = u32_at(data, 1580)?;
         }
@@ -485,7 +486,11 @@ fn parse_boot(data: &[u8]) -> Result<BootImage> {
     let header_pages = 1u64;
 
     let kernel = read_at(data, page * header_pages, kernel_size as u64)?;
-    let ramdisk = read_at(data, page * (header_pages + kernel_pages), ramdisk_size as u64)?;
+    let ramdisk = read_at(
+        data,
+        page * (header_pages + kernel_pages),
+        ramdisk_size as u64,
+    )?;
     let second = if second_size > 0 {
         read_at(
             data,
@@ -574,8 +579,8 @@ fn parse_vendor_boot(data: &[u8]) -> Result<BootImage> {
         let dtb_offset = ramdisk_base + page * pages(vendor_ramdisk_size as u64, page);
         let table_offset = dtb_offset + page * pages(dtb_size as u64, page);
         if vendor_ramdisk_table_entry_num > 0 {
-            let need = vendor_ramdisk_table_entry_num as u64
-                * vendor_ramdisk_table_entry_size as u64;
+            let need =
+                vendor_ramdisk_table_entry_num as u64 * vendor_ramdisk_table_entry_size as u64;
             if table_offset + need > data.len() as u64 {
                 bail!(
                     "vendor ramdisk table extends past end of image (offset {table_offset}, need {need}, image {})",
@@ -729,7 +734,8 @@ fn cstr_at(data: &[u8], offset: usize, size: usize) -> Result<String> {
 
 fn read_array<const N: usize>(cur: &mut Cursor<&[u8]>) -> Result<[u8; N]> {
     let mut buf = [0u8; N];
-    cur.read_exact(&mut buf).context("unexpected end of image")?;
+    cur.read_exact(&mut buf)
+        .context("unexpected end of image")?;
     Ok(buf)
 }
 
@@ -748,7 +754,8 @@ fn read_cstr(cur: &mut Cursor<&[u8]>, size: usize) -> Result<String> {
 
 fn read_array_vec(cur: &mut Cursor<&[u8]>, size: usize) -> Result<Vec<u8>> {
     let mut buf = vec![0u8; size];
-    cur.read_exact(&mut buf).context("unexpected end of image")?;
+    cur.read_exact(&mut buf)
+        .context("unexpected end of image")?;
     Ok(buf)
 }
 
@@ -779,8 +786,9 @@ pub fn split_dtbo(path: &Path, out_dir: &Path) -> Result<Vec<ExtractedFile>> {
         {
             for i in 0..entry_count {
                 let off = entries_offset + i * entry_size;
-                let size = u32::from_be_bytes(data[off as usize..off as usize + 4].try_into().unwrap())
-                    as u64;
+                let size =
+                    u32::from_be_bytes(data[off as usize..off as usize + 4].try_into().unwrap())
+                        as u64;
                 let dt_off = u32::from_be_bytes(
                     data[off as usize + 4..off as usize + 8].try_into().unwrap(),
                 ) as u64;
@@ -827,7 +835,8 @@ pub fn is_boot_image(data: &[u8]) -> bool {
 }
 
 pub fn is_dtbo(data: &[u8]) -> bool {
-    data.len() >= 8 && (data[0..4] == [0xd7, 0xb7, 0xab, 0x1e] || data[4..8] == [0xd0, 0x0d, 0xfe, 0xed])
+    data.len() >= 8
+        && (data[0..4] == [0xd7, 0xb7, 0xab, 0x1e] || data[4..8] == [0xd0, 0x0d, 0xfe, 0xed])
 }
 
 pub fn vendored_dtc() -> Option<PathBuf> {
@@ -902,7 +911,13 @@ mod tests {
         let parsed = BootImage::parse_bytes(&img).unwrap();
         assert_eq!(parsed.header_version(), 4);
         match parsed {
-            BootImage::Boot { header, kernel, ramdisk, signature, .. } => {
+            BootImage::Boot {
+                header,
+                kernel,
+                ramdisk,
+                signature,
+                ..
+            } => {
                 assert_eq!(header.header_size, 1584);
                 assert_eq!(header.signature_size, 3);
                 assert_eq!(kernel, b"kernel-data");
@@ -942,7 +957,12 @@ mod tests {
         buf.extend_from_slice(b"ram");
         let parsed = BootImage::parse_bytes(&buf).unwrap();
         match parsed {
-            BootImage::Boot { header, kernel, ramdisk, .. } => {
+            BootImage::Boot {
+                header,
+                kernel,
+                ramdisk,
+                ..
+            } => {
                 assert_eq!(header.header_version, 0);
                 assert_eq!(kernel, b"kern");
                 assert_eq!(ramdisk, b"ram");
@@ -997,7 +1017,10 @@ mod tests {
         let mut buf = header;
         buf.extend_from_slice(r0);
         buf.extend_from_slice(r1);
-        buf.resize(page + page * pages(total_ramdisk as u64, page as u64) as usize, 0);
+        buf.resize(
+            page + page * pages(total_ramdisk as u64, page as u64) as usize,
+            0,
+        );
         buf.extend_from_slice(dtb);
         buf.resize(buf.len() + (page - (buf.len() % page)) % page, 0);
         buf.extend_from_slice(&table);
@@ -1011,7 +1034,12 @@ mod tests {
         let img = build_vendor_v4();
         let parsed = BootImage::parse_bytes(&img).unwrap();
         match parsed {
-            BootImage::VendorBoot { header, ramdisks, bootconfig, .. } => {
+            BootImage::VendorBoot {
+                header,
+                ramdisks,
+                bootconfig,
+                ..
+            } => {
                 assert_eq!(header.header_size, 2128);
                 assert_eq!(header.vendor_ramdisk_table_entry_num, 2);
                 assert_eq!(ramdisks.len(), 2);

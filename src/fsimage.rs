@@ -1,7 +1,7 @@
 //! Filesystem image detection and extraction (ext4 / EROFS / F2FS).
 
 use crate::util::{self, Runner};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -241,13 +241,8 @@ fn strip_header(src: &Path, dst: &Path, offset: u64) -> Result<()> {
     let mut input = fs::File::open(src)?;
     input.seek(SeekFrom::Start(offset))?;
     let mut output = fs::File::create(dst)?;
-    std::io::copy(&mut input, &mut output).with_context(|| {
-        format!(
-            "stripping {} bytes from {}",
-            offset,
-            src.display()
-        )
-    })?;
+    std::io::copy(&mut input, &mut output)
+        .with_context(|| format!("stripping {} bytes from {}", offset, src.display()))?;
     output.flush()?;
     Ok(())
 }
@@ -267,7 +262,10 @@ mod tests {
         let mut f2fs = vec![0u8; 2048];
         f2fs[1024..1028].copy_from_slice(&F2FS_MAGIC);
         std::fs::write(dir.join("f2fs.img"), &f2fs).unwrap();
-        assert_eq!(detect(&dir.join("erofs.img")).unwrap().fs_type, FsType::Erofs);
+        assert_eq!(
+            detect(&dir.join("erofs.img")).unwrap().fs_type,
+            FsType::Erofs
+        );
         assert_eq!(detect(&dir.join("f2fs.img")).unwrap().fs_type, FsType::F2fs);
         let _ = std::fs::remove_dir_all(&dir);
     }

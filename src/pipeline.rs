@@ -8,15 +8,15 @@ use crate::fstab::FstabSet;
 use crate::ikconfig;
 use crate::legacy;
 use crate::payload;
-use crate::props::{self, DeviceMetadata, PropStore};
 use crate::proprietary;
+use crate::props::{self, DeviceMetadata, PropStore};
 use crate::ramdisk;
 use crate::sdat;
 use crate::sha1sum;
 use crate::sparse;
 use crate::superimg;
 use crate::util::{self, Runner};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,6 +33,8 @@ pub struct DumpOptions {
     pub jobs: usize,
     /// Restrict super partition extraction to these partition names.
     pub partitions: Vec<String>,
+    /// Treat fstab parse errors as fatal.
+    pub strict_fstab: bool,
 }
 
 const BOOT_IMAGES: &[&str] = &[
@@ -110,7 +112,11 @@ impl Pipeline {
             return Ok(input.to_path_buf());
         }
         let head = util::read_head(input, 4096).unwrap_or_default();
-        let name = input.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let name = input
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
 
         if sparse::is_sparse(&head) {
             let raw = staging.join(format!("{}.raw", util::stem(input)));
@@ -207,10 +213,7 @@ impl Pipeline {
         *depth += 1;
 
         let mut files = Vec::new();
-        for entry in walkdir::WalkDir::new(root)
-            .max_depth(3)
-            .follow_links(false)
-        {
+        for entry in walkdir::WalkDir::new(root).max_depth(3).follow_links(false) {
             let entry = match entry {
                 Ok(e) => e,
                 Err(_) => continue,
@@ -240,7 +243,11 @@ impl Pipeline {
 
         // Payload and nested archives.
         for file in &files {
-            let name = file.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = file
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             let head = util::read_head(file, 8).unwrap_or_default();
             let is_super = super_files.iter().any(|p| p == file);
             if is_super {
@@ -307,7 +314,11 @@ impl Pipeline {
             if !file.is_file() {
                 continue;
             }
-            let name = file.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = file
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if !util::is_image_name(&name) {
                 continue;
             }
@@ -335,22 +346,20 @@ impl Pipeline {
         util::step("Extracting super image");
         let primary = files
             .iter()
-            .find(|p| {
-                p.file_name()
-                    .map(|n| n == "super.img")
-                    .unwrap_or(false)
-            })
+            .find(|p| p.file_name().map(|n| n == "super.img").unwrap_or(false))
             .cloned()
             .unwrap_or_else(|| files[0].clone());
 
         // Super split into sparse chunks: concatenate then unsparse.
         let mut raw = primary.clone();
         let head = util::read_head(&primary, 4096).unwrap_or_default();
-        if files.len() > 1 && files.iter().all(|p| {
-            p.file_name()
-                .map(|n| n.to_string_lossy().contains("chunk"))
-                .unwrap_or(false)
-        }) {
+        if files.len() > 1
+            && files.iter().all(|p| {
+                p.file_name()
+                    .map(|n| n.to_string_lossy().contains("chunk"))
+                    .unwrap_or(false)
+            })
+        {
             let combined = staging.join("super.chunks");
             util::info(format!("concatenating {} super chunks", files.len()));
             concat_files(files, &combined)?;
@@ -452,7 +461,16 @@ impl Pipeline {
             util::copy_file(file, &dest)?;
         }
         util::step(format!("Unpacking {base} image"));
-        let image = BootImage::parse(&dest)?;
+        let image = match BootImage::parse(&dest) {
+            Ok(image) => image,
+            Err(e) => {
+                util::warn(format!(
+                    "{}: cannot parse boot header ({e:#}); keeping the image",
+                    dest.display()
+                ));
+                return Ok(());
+            }
+        };
         let image_dir = self.opts.out.join(base);
         let raw_dir = image_dir.join("raw");
         util::remove_dir_all(&image_dir);
@@ -616,7 +634,14 @@ impl Pipeline {
             let out = dts_dir.join(name);
             let output = self.runner.capture(
                 &dtc,
-                &[OsStr::new("-q"), OsStr::new("-I"), OsStr::new("dtb"), OsStr::new("-O"), OsStr::new("dts"), dtb.as_os_str()],
+                &[
+                    OsStr::new("-q"),
+                    OsStr::new("-I"),
+                    OsStr::new("dtb"),
+                    OsStr::new("-O"),
+                    OsStr::new("dts"),
+                    dtb.as_os_str(),
+                ],
                 None,
             )?;
             if output.status.success() {
@@ -635,7 +660,10 @@ impl Pipeline {
     fn extract_filesystems(&mut self) -> Result<()> {
         util::step("Extracting filesystems");
         let fstab = FstabSet::scan(&self.opts.out).ok();
-        let hints = fstab.as_ref().map(|f| f.fs_candidates()).unwrap_or_default();
+        let hints = fstab
+            .as_ref()
+            .map(|f| f.fs_candidates())
+            .unwrap_or_default();
         let mut images = Vec::new();
         if let Ok(entries) = fs::read_dir(&self.opts.out) {
             for entry in entries.flatten() {
@@ -677,6 +705,9 @@ impl Pipeline {
                 info.fs_type.name(),
                 util::human_size(fs::metadata(&image)?.len())
             ));
+            // Avoid mixing files from a previous run into a re-extracted
+            // partition.
+            util::remove_dir_all(&out_dir);
             match fsimage::extract(&image, &out_dir, hint) {
                 Ok(fs_type) => {
                     self.extracted.push(name.clone());
@@ -720,6 +751,12 @@ impl Pipeline {
             util::warn(
                 "fstab parsing errors were reported above (they are no longer silently ignored)",
             );
+            if self.opts.strict_fstab {
+                bail!(
+                    "fstab parsing failed with {} error(s) and --strict-fstab was requested",
+                    errors.len()
+                );
+            }
         }
         // Cross-check logical partitions declared by fstab against what we
         // actually extracted.
@@ -810,7 +847,10 @@ impl Pipeline {
             let do_aosp = self.opts.aosp || !self.opts.twrp;
             device_tree::generate(
                 &self.opts.out,
-                &DeviceTreeOptions { twrp: do_twrp, aosp: do_aosp },
+                &DeviceTreeOptions {
+                    twrp: do_twrp,
+                    aosp: do_aosp,
+                },
             )?;
         }
 

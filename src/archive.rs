@@ -1,7 +1,7 @@
 //! Archive listing/extraction through the bundled 7-Zip binary.
 
 use crate::util::{self, Runner};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
@@ -16,8 +16,8 @@ pub struct ArchiveEntry {
 pub fn is_archive_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     [
-        ".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.md5", ".gz", ".xz", ".bz2",
-        ".lz4", ".zst", ".br",
+        ".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.md5", ".gz", ".xz", ".bz2", ".lz4",
+        ".zst", ".br",
     ]
     .iter()
     .any(|ext| lower.ends_with(ext))

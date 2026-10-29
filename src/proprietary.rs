@@ -1,7 +1,7 @@
 //! Native port of android_tools' `proprietary-files.sh` classifier.
 
+use crate::proprietary_rules::{RULES, Rule};
 use crate::props::DeviceMetadata;
-use crate::proprietary_rules::{Rule, RULES};
 use crate::sha1sum;
 use crate::util;
 use anyhow::Result;
@@ -9,11 +9,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub fn generate(
-    dump_root: &Path,
-    _meta: &DeviceMetadata,
-    description: &str,
-) -> Result<PathBuf> {
+pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> Result<PathBuf> {
     util::step("Generating proprietary-files.txt");
     let files = collect_files(dump_root)?;
     let file_set: HashSet<String> = files.iter().cloned().collect();
@@ -29,7 +25,11 @@ pub fn generate(
             if !path.is_file() {
                 continue;
             }
-            let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
             if let Ok(text) = fs::read_to_string(&path) {
                 let list = sections.entry(name).or_default();
                 for line in text.lines() {
@@ -125,9 +125,8 @@ pub fn generate(
 
     // proprietary-files.sha1
     let sha1_path = dump_root.join("proprietary-files.sha1");
-    let mut sha1_text = format!(
-        "# All blobs are from \"{description}\" and are pinned with sha1sum values\n"
-    );
+    let mut sha1_text =
+        format!("# All blobs are from \"{description}\" and are pinned with sha1sum values\n");
     for line in fs::read_to_string(&out_path)?.lines() {
         if line.is_empty() || line.starts_with('#') {
             sha1_text.push_str(line);
@@ -233,13 +232,18 @@ fn format_blob(path: &str) -> String {
 }
 
 fn rule_matches(rule: &Rule, lower_path: &str) -> bool {
-    if rule.excludes.iter().any(|pattern| pat_match(pattern, lower_path)) {
+    if rule
+        .excludes
+        .iter()
+        .any(|pattern| pat_match(pattern, lower_path))
+    {
         return false;
     }
     if !rule.hardware.is_empty() {
-        return rule.hardware.iter().any(|target| {
-            hardware_module_match(target, lower_path)
-        });
+        return rule
+            .hardware
+            .iter()
+            .any(|target| hardware_module_match(target, lower_path));
     }
     rule.include_groups
         .iter()
@@ -310,7 +314,10 @@ mod tests {
             "hw/camera",
             "vendor/lib64/hw/camera.mt6789.so"
         ));
-        assert!(!hardware_module_match("hw/camera", "vendor/lib64/libfoo.so"));
+        assert!(!hardware_module_match(
+            "hw/camera",
+            "vendor/lib64/libfoo.so"
+        ));
         assert!(hardware_module_match(
             "hardware.audio",
             "vendor/lib64/android.hardware.audio.common-util.so"

@@ -3,7 +3,7 @@
 use crate::cpio;
 use crate::fsimage;
 use crate::util;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -70,15 +70,16 @@ pub fn decompress(data: &[u8]) -> Result<(Compression, Vec<u8>)> {
     let out = match kind {
         Compression::Cpio => data.to_vec(),
         Compression::Gzip => run_filter("gzip", &["-dc"], data)?,
-        Compression::Lz4Legacy | Compression::Lz4Frame => {
-            run_filter("lz4", &["-dc"], data)?
-        }
+        Compression::Lz4Legacy | Compression::Lz4Frame => run_filter("lz4", &["-dc"], data)?,
         Compression::Xz => run_filter("xz", &["-dc"], data)?,
         Compression::Lzma => run_filter("xz", &["--format=lzma", "-dc"], data)?,
         Compression::Bzip2 => run_filter("bzip2", &["-dc"], data)?,
         Compression::Zstd => run_filter("zstd", &["-dc"], data)?,
         Compression::Unknown => {
-            bail!("unsupported ramdisk compression (first bytes: {:02x?})", &data[..data.len().min(8)])
+            bail!(
+                "unsupported ramdisk compression (first bytes: {:02x?})",
+                &data[..data.len().min(8)]
+            )
         }
     };
     Ok((kind, out))
@@ -138,10 +139,7 @@ pub fn extract(data: &[u8], out_dir: &Path) -> Result<cpio::ExtractStats> {
         .map(Path::to_path_buf)
         .unwrap_or_else(|| std::env::temp_dir());
     util::ensure_dir(&parent)?;
-    let temp = parent.join(format!(
-        ".ramdisk-{}.img",
-        std::process::id()
-    ));
+    let temp = parent.join(format!(".ramdisk-{}.img", std::process::id()));
     std::fs::write(&temp, &decompressed)?;
     let result = fsimage::extract(&temp, out_dir, None);
     let _ = std::fs::remove_file(&temp);

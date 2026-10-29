@@ -1,6 +1,6 @@
 //! Shared helpers: tool discovery, process execution, logging.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::ffi::OsStr;
 use std::fs;
 use std::io::Write;
@@ -10,9 +10,7 @@ use std::process::{Command, Stdio};
 pub fn project_dir() -> PathBuf {
     std::env::var_os("DUMPRX_PROJECT_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        })
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }
 
 pub fn utils_dir() -> PathBuf {
@@ -107,10 +105,7 @@ impl Runner {
                     .spawn()
                     .with_context(|| format!("spawning {}", program.display()))?;
                 {
-                    let mut stdin = child
-                        .stdin
-                        .take()
-                        .context("child stdin unavailable")?;
+                    let mut stdin = child.stdin.take().context("child stdin unavailable")?;
                     stdin.write_all(data)?;
                 }
                 let status = child.wait()?;
@@ -296,7 +291,6 @@ pub fn list_dirs(dir: &Path) -> Result<Vec<PathBuf>> {
     dirs.sort();
     Ok(dirs)
 }
-
 
 /// Recursively mirror a directory using hard links (falling back to copies
 /// for cross-device files).  Used when the input is an already-extracted

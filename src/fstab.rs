@@ -397,7 +397,10 @@ impl FstabSet {
             // */first_stage_ramdisk/fstab*, and root-level fstab*.
             let path = entry.path();
             let parent = path.parent().unwrap_or(Path::new(""));
-            let parent_name = parent.file_name().map(|s| s.to_string_lossy()).unwrap_or_default();
+            let parent_name = parent
+                .file_name()
+                .map(|s| s.to_string_lossy())
+                .unwrap_or_default();
             let grandparent_name = parent
                 .parent()
                 .and_then(|p| p.file_name())
@@ -547,14 +550,16 @@ mod tests {
 
     #[test]
     fn keeps_duplicate_fs_candidates() {
-        let f = parse(
-            "vendor /vendor erofs ro wait,logical\nvendor /vendor ext4 ro wait,logical\n",
-        );
+        let f =
+            parse("vendor /vendor erofs ro wait,logical\nvendor /vendor ext4 ro wait,logical\n");
         assert_eq!(f.entries.len(), 2);
         assert!(f.warnings.is_empty());
         let set = FstabSet { files: vec![f] };
         let cands = set.fs_candidates();
-        assert_eq!(cands.get("vendor"), Some(&vec!["erofs".into(), "ext4".into()]));
+        assert_eq!(
+            cands.get("vendor"),
+            Some(&vec!["erofs".into(), "ext4".into()])
+        );
     }
 
     #[test]
@@ -564,6 +569,27 @@ mod tests {
         assert_eq!(f.errors.len(), 1);
         assert!(f.errors[0].message.contains("at least 4 fields"));
         assert!(!f.is_clean());
+    }
+
+    #[test]
+    fn scan_ignores_generated_reports() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(".work/test-fstab-scan");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("vendor/etc")).unwrap();
+        std::fs::write(
+            dir.join("vendor/etc/fstab.test"),
+            "system /system erofs ro wait,logical\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("vendor/etc/fstab-report.json"),
+            "{\"files\": [ {\"path\": \"x\"} ]}\n",
+        )
+        .unwrap();
+        let set = FstabSet::scan(&dir).unwrap();
+        assert_eq!(set.files.len(), 1);
+        assert!(set.files[0].path.ends_with("fstab.test"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

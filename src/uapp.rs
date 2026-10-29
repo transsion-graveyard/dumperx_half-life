@@ -1,7 +1,7 @@
 //! Huawei `UPDATE.APP` extraction (native eMMC firmware container).
 
 use crate::util;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -118,11 +118,7 @@ fn parse_entry(file: &mut File, file_len: u64, match_offset: u64) -> Result<(Str
 
 fn sanitize_name(name: &str) -> String {
     let name = name.trim();
-    let base = name
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or(name)
-        .trim();
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name).trim();
     base.chars()
         .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | ' '))
         .collect::<String>()
@@ -130,12 +126,7 @@ fn sanitize_name(name: &str) -> String {
         .to_string()
 }
 
-fn extract_data(
-    reader: &mut File,
-    data_start: u64,
-    size: u64,
-    out_path: &Path,
-) -> Result<()> {
+fn extract_data(reader: &mut File, data_start: u64, size: u64, out_path: &Path) -> Result<()> {
     reader.seek(SeekFrom::Start(data_start))?;
     let mut out = OpenOptions::new()
         .create(true)
@@ -191,7 +182,10 @@ mod tests {
         let results = extract(&app, &out, &[]).unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(std::fs::read(out.join("boot.img")).unwrap(), b"bootdata");
-        assert_eq!(std::fs::read(out.join("system.img")).unwrap(), b"systemdata");
+        assert_eq!(
+            std::fs::read(out.join("system.img")).unwrap(),
+            b"systemdata"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

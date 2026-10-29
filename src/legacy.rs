@@ -4,7 +4,7 @@
 //! incrementally.
 
 use crate::util::{self, Runner};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -175,7 +175,11 @@ fn extract_ozip(file: &Path, out: &Path, tmp: &Path) -> Result<()> {
     let python = python()?;
     let script = script("vendor/oppo_ozip_decrypt/ozipdecrypt.py")?;
     Runner::new(false)
-        .run(&python, &[script.as_os_str(), staged.as_os_str()], Some(&work))
+        .run(
+            &python,
+            &[script.as_os_str(), staged.as_os_str()],
+            Some(&work),
+        )
         .context("ozip decryption failed")?;
     let zip = staged.with_extension("zip");
     if zip.is_file() {
@@ -231,7 +235,11 @@ fn extract_ops(file: &Path, out: &Path, tmp: &Path) -> Result<()> {
     Runner::new(false)
         .run(
             &python,
-            &[script.as_os_str(), OsStr::new("decrypt"), staged.as_os_str()],
+            &[
+                script.as_os_str(),
+                OsStr::new("decrypt"),
+                staged.as_os_str(),
+            ],
             Some(&work),
         )
         .context("ops decryption failed")?;
@@ -295,16 +303,8 @@ fn extract_ruu(file: &Path, out: &Path, tmp: &Path) -> Result<()> {
     let tool = script_bin("RUU_Decrypt_Tool")?;
     let runner = Runner::new(false);
     let cwd = work.clone();
-    runner.run(
-        &tool,
-        &[OsStr::new("-s"), staged.as_os_str()],
-        Some(&cwd),
-    )?;
-    runner.run(
-        &tool,
-        &[OsStr::new("-f"), staged.as_os_str()],
-        Some(&cwd),
-    )?;
+    runner.run(&tool, &[OsStr::new("-s"), staged.as_os_str()], Some(&cwd))?;
+    runner.run(&tool, &[OsStr::new("-f"), staged.as_os_str()], Some(&cwd))?;
     move_images(&work, out)?;
     Ok(())
 }
@@ -318,11 +318,7 @@ fn extract_nb0(file: &Path, out: &Path, tmp: &Path) -> Result<()> {
     let work = tmp.join("nb0");
     let staged = stage_copy(file, &work)?;
     let tool = script_bin("nb0-extract")?;
-    Runner::new(false).run(
-        &tool,
-        &[staged.as_os_str(), out.as_os_str()],
-        Some(&work),
-    )?;
+    Runner::new(false).run(&tool, &[staged.as_os_str(), out.as_os_str()], Some(&work))?;
     Ok(())
 }
 
@@ -357,11 +353,7 @@ fn extract_rockchip(file: &Path, out: &Path, tmp: &Path) -> Result<()> {
     let runner = Runner::new(false);
     runner.run(
         &rk,
-        &[
-            OsStr::new("-unpack"),
-            file.as_os_str(),
-            work.as_os_str(),
-        ],
+        &[OsStr::new("-unpack"), file.as_os_str(), work.as_os_str()],
         Some(&work),
     )?;
     let firmware = work.join("firmware.img");

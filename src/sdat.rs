@@ -1,6 +1,6 @@
 //! Native `sdat2img` implementation for A-only block-based OTA images.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -31,11 +31,7 @@ fn parse_rangeset(text: &str) -> Result<Vec<Range>> {
         .collect::<Result<Vec<_>>>()?;
     // The first number is the count of following integers (two per
     // range), e.g. "4,0,2,5,7" describes ranges 0..2 and 5..7.
-    if nums.is_empty()
-        || nums.len() != nums[0] as usize + 1
-        || nums[0] < 0
-        || nums[0] % 2 != 0
-    {
+    if nums.is_empty() || nums.len() != nums[0] as usize + 1 || nums[0] < 0 || nums[0] % 2 != 0 {
         bail!("invalid range set '{text}'");
     }
     let mut ranges = Vec::new();

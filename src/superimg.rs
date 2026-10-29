@@ -3,7 +3,7 @@
 //! Parses the liblp metadata directly (geometry + metadata header + tables)
 //! and extracts logical partitions without invoking `lpunpack`.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -119,7 +119,10 @@ pub fn is_super_image(data: &[u8]) -> bool {
 pub fn read_geometry(file: &mut File) -> Result<Geometry> {
     let mut candidates = Vec::new();
     // Primary geometry at 4096, backup geometry one geometry block later.
-    for offset in [PARTITION_RESERVED_BYTES, PARTITION_RESERVED_BYTES + GEOMETRY_SIZE] {
+    for offset in [
+        PARTITION_RESERVED_BYTES,
+        PARTITION_RESERVED_BYTES + GEOMETRY_SIZE,
+    ] {
         file.seek(SeekFrom::Start(offset))?;
         let mut buf = [0u8; 52];
         if file.read_exact(&mut buf).is_err() {
@@ -154,8 +157,8 @@ pub fn read_geometry(file: &mut File) -> Result<Geometry> {
 pub fn read_metadata(file: &mut File) -> Result<Metadata> {
     let geometry = read_geometry(file)?;
     let primary_start = PARTITION_RESERVED_BYTES + GEOMETRY_SIZE * 2;
-    let backup_start = primary_start
-        + geometry.metadata_max_size as u64 * geometry.metadata_slot_count as u64;
+    let backup_start =
+        primary_start + geometry.metadata_max_size as u64 * geometry.metadata_slot_count as u64;
 
     let mut last_error = None;
     for slot in 0..geometry.metadata_slot_count as u64 {
@@ -437,8 +440,8 @@ pub fn extract_filtered(
     filter: &[String],
     disk_image: bool,
 ) -> Result<Vec<(String, PathBuf, u64)>> {
-    let mut src = File::open(super_path)
-        .with_context(|| format!("opening {}", super_path.display()))?;
+    let mut src =
+        File::open(super_path).with_context(|| format!("opening {}", super_path.display()))?;
     let meta = read_metadata(&mut src)?;
     std::fs::create_dir_all(out_dir)?;
 
@@ -574,7 +577,8 @@ mod tests {
 
     fn build_super() -> Vec<u8> {
         let max_size = 4096u32;
-        let mut buf = vec![0u8; (PARTITION_RESERVED_BYTES + GEOMETRY_SIZE * 2 + max_size as u64) as usize];
+        let mut buf =
+            vec![0u8; (PARTITION_RESERVED_BYTES + GEOMETRY_SIZE * 2 + max_size as u64) as usize];
         let mut geometry = Vec::new();
         put_u32(&mut geometry, GEOMETRY_MAGIC);
         put_u32(&mut geometry, 52);
@@ -614,7 +618,10 @@ mod tests {
 
         let mut tables = Vec::new();
         name36(&mut tables, "system_a");
-        put_u32(&mut tables, LP_PARTITION_ATTR_READONLY | LP_PARTITION_ATTR_SLOT_SUFFIXED);
+        put_u32(
+            &mut tables,
+            LP_PARTITION_ATTR_READONLY | LP_PARTITION_ATTR_SLOT_SUFFIXED,
+        );
         put_u32(&mut tables, 0);
         put_u32(&mut tables, 1);
         put_u32(&mut tables, 0);

@@ -39,7 +39,10 @@ impl PropStore {
             let path = entry.path().to_path_buf();
             let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
             let props = parse_prop_file(&path)?;
-            files.push(PropFile { path: relative, props });
+            files.push(PropFile {
+                path: relative,
+                props,
+            });
         }
         files.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(PropStore { files })
@@ -62,12 +65,7 @@ impl PropStore {
             for file in &self.files {
                 let rel = file.path.to_string_lossy();
                 if wildcard_match(pattern, &rel) {
-                    if let Some((_, value)) = file
-                        .props
-                        .iter()
-                        .rev()
-                        .find(|(k, _)| k == key)
-                    {
+                    if let Some((_, value)) = file.props.iter().rev().find(|(k, _)| k == key) {
                         found = Some(value.clone());
                     }
                 }
@@ -87,8 +85,7 @@ impl PropStore {
 }
 
 fn parse_prop_file(path: &Path) -> Result<Vec<(String, String)>> {
-    let text = fs::read_to_string(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+    let text = fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let mut out = Vec::new();
     parse_prop_text(&text, &mut out);
     Ok(out)
@@ -225,7 +222,11 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
         get(
             store,
             "ro.build.flavor",
-            &["vendor/build*.prop", "system/build*.prop", "system/system/build*.prop"],
+            &[
+                "vendor/build*.prop",
+                "system/build*.prop",
+                "system/system/build*.prop",
+            ],
         )
     })
     .or_else(|| {
@@ -254,7 +255,13 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
             "system/system/build*.prop",
         ],
     )
-    .or_else(|| get(store, "ro.vendor.build.version.release", &["vendor/build*.prop"]))
+    .or_else(|| {
+        get(
+            store,
+            "ro.vendor.build.version.release",
+            &["vendor/build*.prop"],
+        )
+    })
     .or_else(|| {
         get(
             store,
@@ -266,12 +273,22 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
 
     let id = get(store, "ro.build.id", &["my_manifest/build*.prop"])
         .or_else(|| get(store, "ro.build.id", &["system/system/build_default.prop"]))
-        .or_else(|| get(store, "ro.build.id", &["vendor/euclid/my_manifest/build.prop"]))
         .or_else(|| {
             get(
                 store,
                 "ro.build.id",
-                &["vendor/build*.prop", "system/build*.prop", "system/system/build*.prop"],
+                &["vendor/euclid/my_manifest/build.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.build.id",
+                &[
+                    "vendor/build*.prop",
+                    "system/build*.prop",
+                    "system/system/build*.prop",
+                ],
             )
         })
         .or_else(|| get(store, "ro.vendor.build.id", &["vendor/build*.prop"]))
@@ -307,7 +324,11 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
         get(
             store,
             "ro.build.version.incremental",
-            &["vendor/build*.prop", "system/build*.prop", "system/system/build*.prop"],
+            &[
+                "vendor/build*.prop",
+                "system/build*.prop",
+                "system/system/build*.prop",
+            ],
         )
     })
     .or_else(|| {
@@ -364,7 +385,11 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
     let tags = get(
         store,
         "ro.build.tags",
-        &["vendor/build*.prop", "system/build*.prop", "system/system/build*.prop"],
+        &[
+            "vendor/build*.prop",
+            "system/build*.prop",
+            "system/system/build*.prop",
+        ],
     )
     .or_else(|| get(store, "ro.vendor.build.tags", &["vendor/build*.prop"]))
     .or_else(|| {
@@ -379,16 +404,14 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
     let platform = get(
         store,
         "ro.board.platform",
-        &["vendor/build*.prop", "system/build*.prop", "system/system/build*.prop"],
+        &[
+            "vendor/build*.prop",
+            "system/build*.prop",
+            "system/system/build*.prop",
+        ],
     )
     .filter(|v| v != "common")
-    .or_else(|| {
-        get(
-            store,
-            "ro.vendor.board.platform",
-            &["vendor/build*.prop"],
-        )
-    })
+    .or_else(|| get(store, "ro.vendor.board.platform", &["vendor/build*.prop"]))
     .or_else(|| {
         get(
             store,
@@ -410,8 +433,20 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
             &["odm/etc/fingerprint/build.default.prop"],
         )
     })
-    .or_else(|| get(store, "ro.product.manufacturer", &["my_product/build*.prop"]))
-    .or_else(|| get(store, "ro.product.manufacturer", &["my_manifest/build*.prop"]))
+    .or_else(|| {
+        get(
+            store,
+            "ro.product.manufacturer",
+            &["my_product/build*.prop"],
+        )
+    })
+    .or_else(|| {
+        get(
+            store,
+            "ro.product.manufacturer",
+            &["my_manifest/build*.prop"],
+        )
+    })
     .or_else(|| {
         get(
             store,
@@ -430,7 +465,11 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
         get(
             store,
             "ro.product.manufacturer",
-            &["vendor/build*.prop", "system/build*.prop", "system/system/build*.prop"],
+            &[
+                "vendor/build*.prop",
+                "system/build*.prop",
+                "system/system/build*.prop",
+            ],
         )
     })
     .or_else(|| get(store, "ro.product.brand.sub", &["my_product/build*.prop"]))
@@ -548,98 +587,94 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
     })
     .unwrap_or_default();
 
-    let fingerprint = get(
-        store,
-        "ro.odm.build.fingerprint",
-        &["odm/etc/*build*.prop"],
-    )
-    .or_else(|| {
-        get(
-            store,
-            "ro.vendor.build.fingerprint",
-            &["my_manifest/build*.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.vendor.build.fingerprint",
-            &["system/system/build_default.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.vendor.build.fingerprint",
-            &["vendor/euclid/my_manifest/build.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.vendor.build.fingerprint",
-            &["odm/etc/fingerprint/build.default.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.vendor.build.fingerprint",
-            &["vendor/build*.prop"],
-        )
-    })
-    .or_else(|| get(store, "ro.build.fingerprint", &["my_manifest/build*.prop"]))
-    .or_else(|| {
-        get(
-            store,
-            "ro.build.fingerprint",
-            &["system/system/build_default.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.build.fingerprint",
-            &["vendor/euclid/my_manifest/build.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.build.fingerprint",
-            &["system/build*.prop", "system/system/build*.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.build.fingerprint",
-            &["product/build*.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.system.build.fingerprint",
-            &["system/build*.prop", "system/system/build*.prop"],
-        )
-    })
-    .or_else(|| get(store, "ro.build.fingerprint", &["my_product/build.prop"]))
-    .or_else(|| {
-        get(
-            store,
-            "ro.system.build.fingerprint",
-            &["my_product/build.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.vendor.build.fingerprint",
-            &["my_product/build.prop"],
-        )
-    })
-    .unwrap_or_default();
+    let fingerprint = get(store, "ro.odm.build.fingerprint", &["odm/etc/*build*.prop"])
+        .or_else(|| {
+            get(
+                store,
+                "ro.vendor.build.fingerprint",
+                &["my_manifest/build*.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.vendor.build.fingerprint",
+                &["system/system/build_default.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.vendor.build.fingerprint",
+                &["vendor/euclid/my_manifest/build.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.vendor.build.fingerprint",
+                &["odm/etc/fingerprint/build.default.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.vendor.build.fingerprint",
+                &["vendor/build*.prop"],
+            )
+        })
+        .or_else(|| get(store, "ro.build.fingerprint", &["my_manifest/build*.prop"]))
+        .or_else(|| {
+            get(
+                store,
+                "ro.build.fingerprint",
+                &["system/system/build_default.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.build.fingerprint",
+                &["vendor/euclid/my_manifest/build.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.build.fingerprint",
+                &["system/build*.prop", "system/system/build*.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.build.fingerprint",
+                &["product/build*.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.system.build.fingerprint",
+                &["system/build*.prop", "system/system/build*.prop"],
+            )
+        })
+        .or_else(|| get(store, "ro.build.fingerprint", &["my_product/build.prop"]))
+        .or_else(|| {
+            get(
+                store,
+                "ro.system.build.fingerprint",
+                &["my_product/build.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.vendor.build.fingerprint",
+                &["my_product/build.prop"],
+            )
+        })
+        .unwrap_or_default();
 
     let codename = get(store, "ro.product.odm.device", &["odm/etc/build*.prop"])
         .or_else(|| {
@@ -706,34 +741,20 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
                 &["system/system/build_default.prop"],
             )
         })
-        .or_else(|| {
-            get(
-                store,
-                "ro.vendor.product.device",
-                &["vendor/build*.prop"],
-            )
-        })
-        .or_else(|| {
-            get(
-                store,
-                "ro.product.vendor.device",
-                &["vendor/build*.prop"],
-            )
-        })
+        .or_else(|| get(store, "ro.vendor.product.device", &["vendor/build*.prop"]))
+        .or_else(|| get(store, "ro.product.vendor.device", &["vendor/build*.prop"]))
         .or_else(|| {
             get(
                 store,
                 "ro.product.device",
-                &["vendor/build*.prop", "system/build*.prop", "system/system/build*.prop"],
+                &[
+                    "vendor/build*.prop",
+                    "system/build*.prop",
+                    "system/system/build*.prop",
+                ],
             )
         })
-        .or_else(|| {
-            get(
-                store,
-                "ro.vendor.product.device.oem",
-                &["odm/build.prop"],
-            )
-        })
+        .or_else(|| get(store, "ro.vendor.product.device.oem", &["odm/build.prop"]))
         .or_else(|| {
             get(
                 store,
@@ -756,7 +777,11 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
             )
         })
         .or_else(|| {
-            get(store, "ro.product.system.device", &["vendor/euclid/*/build.prop"])
+            get(
+                store,
+                "ro.product.system.device",
+                &["vendor/euclid/*/build.prop"],
+            )
         })
         .or_else(|| {
             get(
@@ -805,7 +830,11 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
             get(
                 store,
                 "ro.build.product",
-                &["vendor/build*.prop", "system/build*.prop", "system/system/build*.prop"],
+                &[
+                    "vendor/build*.prop",
+                    "system/build*.prop",
+                    "system/system/build*.prop",
+                ],
             )
         })
         .or_else(|| {
@@ -816,143 +845,137 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
         })
         .unwrap_or_default();
 
-    let mut brand = get(
-        store,
-        "ro.product.odm.brand",
-        &["odm/etc/build*.prop"],
-    )
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.odm.brand",
-            &[&format!("odm/etc/{codename}_build.prop")],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.odm.brand",
-            &["system/system/build_default.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.brand",
-            &["odm/etc/fingerprint/build.default.prop"],
-        )
-    })
-    .or_else(|| get(store, "ro.product.brand", &["my_product/build*.prop"]))
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.brand",
-            &["system/system/build_default.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.brand",
-            &["vendor/euclid/my_manifest/build.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.brand",
-            &["vendor/build*.prop", "system/build*.prop", "system/system/build*.prop"],
-        )
-    })
-    .or_else(|| get(store, "ro.product.brand.sub", &["my_product/build*.prop"]))
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.brand.sub",
-            &["system/system/euclid/my_product/build*.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.vendor.brand",
-            &["my_manifest/build*.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.vendor.brand",
-            &["system/system/build_default.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.vendor.brand",
-            &["vendor/euclid/my_manifest/build.prop"],
-        )
-    })
-    .or_else(|| get(store, "ro.product.vendor.brand", &["vendor/build*.prop"]))
-    .or_else(|| get(store, "ro.vendor.product.brand", &["vendor/build*.prop"]))
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.system.brand",
-            &["system/build*.prop", "system/system/build*.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.system.brand",
-            &["vendor/euclid/*/build.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.product.brand",
-            &["vendor/euclid/product/build*.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.odm.brand",
-            &["my_manifest/build*.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.odm.brand",
-            &["vendor/euclid/my_manifest/build.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.odm.brand",
-            &["vendor/odm/etc/build*.prop"],
-        )
-    })
-    .or_else(|| {
-        get(
-            store,
-            "ro.product.brand",
-            &["oppo_product/build*.prop", "my_product/build*.prop"],
-        )
-    })
-    .or_else(|| fingerprint.split('/').next().map(str::to_string))
-    .or_else(|| {
-        if manufacturer.is_empty() {
-            None
-        } else {
-            Some(manufacturer.clone())
-        }
-    })
-    .unwrap_or_default();
+    let mut brand = get(store, "ro.product.odm.brand", &["odm/etc/build*.prop"])
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.odm.brand",
+                &[&format!("odm/etc/{codename}_build.prop")],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.odm.brand",
+                &["system/system/build_default.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.brand",
+                &["odm/etc/fingerprint/build.default.prop"],
+            )
+        })
+        .or_else(|| get(store, "ro.product.brand", &["my_product/build*.prop"]))
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.brand",
+                &["system/system/build_default.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.brand",
+                &["vendor/euclid/my_manifest/build.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.brand",
+                &[
+                    "vendor/build*.prop",
+                    "system/build*.prop",
+                    "system/system/build*.prop",
+                ],
+            )
+        })
+        .or_else(|| get(store, "ro.product.brand.sub", &["my_product/build*.prop"]))
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.brand.sub",
+                &["system/system/euclid/my_product/build*.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.vendor.brand",
+                &["my_manifest/build*.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.vendor.brand",
+                &["system/system/build_default.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.vendor.brand",
+                &["vendor/euclid/my_manifest/build.prop"],
+            )
+        })
+        .or_else(|| get(store, "ro.product.vendor.brand", &["vendor/build*.prop"]))
+        .or_else(|| get(store, "ro.vendor.product.brand", &["vendor/build*.prop"]))
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.system.brand",
+                &["system/build*.prop", "system/system/build*.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.system.brand",
+                &["vendor/euclid/*/build.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.product.brand",
+                &["vendor/euclid/product/build*.prop"],
+            )
+        })
+        .or_else(|| get(store, "ro.product.odm.brand", &["my_manifest/build*.prop"]))
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.odm.brand",
+                &["vendor/euclid/my_manifest/build.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.odm.brand",
+                &["vendor/odm/etc/build*.prop"],
+            )
+        })
+        .or_else(|| {
+            get(
+                store,
+                "ro.product.brand",
+                &["oppo_product/build*.prop", "my_product/build*.prop"],
+            )
+        })
+        .or_else(|| fingerprint.split('/').next().map(str::to_string))
+        .or_else(|| {
+            if manufacturer.is_empty() {
+                None
+            } else {
+                Some(manufacturer.clone())
+            }
+        })
+        .unwrap_or_default();
 
     if brand == "OPPO" {
         if let Some(v) = get(
@@ -976,13 +999,7 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
             &["system/build*.prop", "system/system/build*.prop"],
         )
     })
-    .or_else(|| {
-        get(
-            store,
-            "ro.vendor.build.description",
-            &["vendor/build.prop"],
-        )
-    })
+    .or_else(|| get(store, "ro.vendor.build.description", &["vendor/build.prop"]))
     .or_else(|| {
         get(
             store,
@@ -1040,13 +1057,21 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
     let density = get_or(
         store,
         "ro.sf.lcd_density",
-        &["vendor/build*.prop", "system/build*.prop", "system/system/build*.prop"],
+        &[
+            "vendor/build*.prop",
+            "system/build*.prop",
+            "system/system/build*.prop",
+        ],
         "undefined",
     );
     let is_ab = get_or(
         store,
         "ro.build.ab_update",
-        &["system/build*.prop", "system/system/build*.prop", "vendor/build*.prop"],
+        &[
+            "system/build*.prop",
+            "system/system/build*.prop",
+            "vendor/build*.prop",
+        ],
         "false",
     );
     let treble_support = get_or(
@@ -1126,7 +1151,10 @@ mod tests {
     #[test]
     fn wildcard_matching() {
         assert!(wildcard_match("vendor/build*.prop", "vendor/build.prop"));
-        assert!(wildcard_match("vendor/build*.prop", "vendor/build_odm.prop"));
+        assert!(wildcard_match(
+            "vendor/build*.prop",
+            "vendor/build_odm.prop"
+        ));
         assert!(!wildcard_match("vendor/build*.prop", "system/build.prop"));
         assert!(wildcard_match("a/?/c", "a/b/c"));
     }

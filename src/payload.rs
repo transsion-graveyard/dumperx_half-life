@@ -7,7 +7,7 @@
 //! image and are reported as unsupported.
 
 use crate::util;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -43,8 +43,7 @@ pub fn is_payload(head: &[u8]) -> bool {
 /// Extract a full OTA payload.  Returns the extracted partition images.
 pub fn extract(payload: &Path, out_dir: &Path) -> Result<Vec<(String, u64)>> {
     util::ensure_dir(out_dir)?;
-    let mut file = File::open(payload)
-        .with_context(|| format!("opening {}", payload.display()))?;
+    let mut file = File::open(payload).with_context(|| format!("opening {}", payload.display()))?;
     let mut header = [0u8; 24];
     file.read_exact(&mut header)?;
     if &header[..4] != MAGIC {
@@ -134,9 +133,8 @@ pub fn extract(payload: &Path, out_dir: &Path) -> Result<Vec<(String, u64)>> {
             if op.op_type == 6 || op.op_type == 7 {
                 continue;
             }
-            write_extents(&mut sink, block_size, &op.dst_extents, &data).with_context(|| {
-                format!("writing operation {index} for {}", partition.name)
-            })?;
+            write_extents(&mut sink, block_size, &op.dst_extents, &data)
+                .with_context(|| format!("writing operation {index} for {}", partition.name))?;
         }
         sink.flush()?;
         results.push((partition.name.clone(), size));
@@ -150,12 +148,7 @@ pub fn extract(payload: &Path, out_dir: &Path) -> Result<Vec<(String, u64)>> {
     Ok(results)
 }
 
-fn write_extents(
-    sink: &mut File,
-    block_size: u64,
-    extents: &[Extent],
-    data: &[u8],
-) -> Result<()> {
+fn write_extents(sink: &mut File, block_size: u64, extents: &[Extent], data: &[u8]) -> Result<()> {
     let mut cursor = 0usize;
     for extent in extents {
         if cursor >= data.len() {
@@ -181,7 +174,10 @@ fn run_filter(program: &str, args: &[&str], input: &[u8]) -> Result<Vec<u8>> {
         .stderr(Stdio::piped())
         .spawn()
         .with_context(|| format!("spawning {}", tool.display()))?;
-    let mut stdin = child.stdin.take().context("decompressor stdin unavailable")?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .context("decompressor stdin unavailable")?;
     let data = input.to_vec();
     let writer = std::thread::spawn(move || -> std::io::Result<()> {
         stdin.write_all(&data)?;
@@ -225,8 +221,8 @@ fn parse_partition(data: &[u8]) -> Result<PayloadPartition> {
     while let Some((field, wire, value)) = reader.next_field()? {
         match (field, wire) {
             (1, 2) => {
-                partition.name = String::from_utf8_lossy(value.as_bytes().unwrap_or(&[]))
-                    .into_owned()
+                partition.name =
+                    String::from_utf8_lossy(value.as_bytes().unwrap_or(&[])).into_owned()
             }
             (2, 2) => partition
                 .operations

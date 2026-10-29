@@ -15,9 +15,9 @@ mod legacy;
 mod pac;
 mod payload;
 mod pipeline;
-mod props;
 mod proprietary;
 mod proprietary_rules;
+mod props;
 mod ramdisk;
 mod sdat;
 mod sha1sum;
@@ -63,6 +63,9 @@ enum Commands {
         /// Only extract these super partitions (repeatable)
         #[arg(long = "partition", short = 'p')]
         partitions: Vec<String>,
+        /// Treat fstab parse errors as fatal
+        #[arg(long)]
+        strict_fstab: bool,
         /// Verbose command logging
         #[arg(short, long)]
         verbose: bool,
@@ -150,6 +153,7 @@ fn main() -> Result<()> {
             twrp,
             aosp,
             partitions,
+            strict_fstab,
             verbose,
         } => {
             let opts = pipeline::DumpOptions {
@@ -164,6 +168,7 @@ fn main() -> Result<()> {
                     .map(|n| n.get())
                     .unwrap_or(4),
                 partitions,
+                strict_fstab,
             };
             pipeline::Pipeline::new(opts)?.run()?;
         }
@@ -177,7 +182,10 @@ fn main() -> Result<()> {
             let do_aosp = aosp || !twrp;
             device_tree::generate(
                 &dump,
-                &device_tree::DeviceTreeOptions { twrp: do_twrp, aosp: do_aosp },
+                &device_tree::DeviceTreeOptions {
+                    twrp: do_twrp,
+                    aosp: do_aosp,
+                },
             )?;
         }
         Commands::Info { image } => {
@@ -211,7 +219,12 @@ fn main() -> Result<()> {
         Commands::SplitDtbo { image, out } => {
             let files = bootimg::split_dtbo(&image, &out)?;
             for f in files {
-                println!("{} ({} bytes at {:#x})", out.join(f.name).display(), f.size, f.offset);
+                println!(
+                    "{} ({} bytes at {:#x})",
+                    out.join(f.name).display(),
+                    f.size,
+                    f.offset
+                );
             }
         }
         Commands::SuperList { image, json } => {
@@ -231,12 +244,7 @@ fn main() -> Result<()> {
                 );
                 println!("Partition table:");
                 for p in &infos {
-                    println!(
-                        "  {:<28} {:>12} bytes  [{}]",
-                        p.name,
-                        p.size,
-                        p.attributes
-                    );
+                    println!("  {:<28} {:>12} bytes  [{}]", p.name, p.size, p.attributes);
                     for e in &p.extents {
                         println!(
                             "      {} sectors -> target {} data {} source {}",
@@ -253,14 +261,22 @@ fn main() -> Result<()> {
                 }
                 println!("Groups:");
                 for g in &meta.groups {
-                    println!("  {} max_size={} flags={:#x}", g.name, g.maximum_size, g.flags);
+                    println!(
+                        "  {} max_size={} flags={:#x}",
+                        g.name, g.maximum_size, g.flags
+                    );
                 }
             }
         }
-        Commands::SuperExtract { image, out, slot, partitions, disk_image } => {
+        Commands::SuperExtract {
+            image,
+            out,
+            slot,
+            partitions,
+            disk_image,
+        } => {
             let slot = superimg::SlotMode::parse(&slot)?;
-            let results =
-                superimg::extract_filtered(&image, &out, slot, &partitions, disk_image)?;
+            let results = superimg::extract_filtered(&image, &out, slot, &partitions, disk_image)?;
             for (name, path, size) in results {
                 println!("{name} -> {} ({size} bytes)", path.display());
             }

@@ -38,7 +38,8 @@ pub fn extract(kernel: &[u8]) -> Result<Option<String>> {
             let offset = start + pos;
             if tried.insert((offset, magic[0])) {
                 let candidate = &kernel[offset..];
-                if let Ok(plain) = run_filter(args[0], args[1..].iter().copied().collect(), candidate)
+                if let Ok(plain) =
+                    run_filter(args[0], args[1..].iter().copied().collect(), candidate)
                 {
                     if let Some(config) = try_markers(&plain) {
                         return Ok(Some(config));
@@ -82,7 +83,10 @@ fn run_filter(program: &str, args: Vec<&str>, input: &[u8]) -> Result<Vec<u8>> {
         .stderr(Stdio::null())
         .spawn()
         .with_context(|| format!("spawning {}", tool.display()))?;
-    let mut stdin = child.stdin.take().context("decompressor stdin unavailable")?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .context("decompressor stdin unavailable")?;
     let data = input.to_vec();
     let writer = std::thread::spawn(move || -> std::io::Result<()> {
         // gzip exits with status 2 on trailing garbage, but the data it
@@ -112,12 +116,11 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 /// Extract `ikconfig` from a kernel file and write it to `output`.
 pub fn extract_to_file(kernel_path: &Path, output: &Path) -> Result<bool> {
-    let data = fs::read(kernel_path)
-        .with_context(|| format!("reading {}", kernel_path.display()))?;
+    let data =
+        fs::read(kernel_path).with_context(|| format!("reading {}", kernel_path.display()))?;
     match extract(&data)? {
         Some(config) => {
-            fs::write(output, config)
-                .with_context(|| format!("writing {}", output.display()))?;
+            fs::write(output, config).with_context(|| format!("writing {}", output.display()))?;
             Ok(true)
         }
         None => Ok(false),

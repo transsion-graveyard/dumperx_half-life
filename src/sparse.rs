@@ -1,6 +1,6 @@
 //! Android sparse image support (`simg2img` equivalent).
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -53,9 +53,8 @@ pub fn read_header(reader: &mut impl Read) -> Result<Option<SparseHeader>> {
 /// Convert a sparse image to a raw image.  Returns `Ok(false)` if the input
 /// was not sparse (nothing is written in that case).
 pub fn unsparse(src: &Path, dst: &Path) -> Result<bool> {
-    let mut input = BufReader::new(
-        File::open(src).with_context(|| format!("opening {}", src.display()))?,
-    );
+    let mut input =
+        BufReader::new(File::open(src).with_context(|| format!("opening {}", src.display()))?);
     let header = match read_header(&mut input)? {
         Some(h) => h,
         None => return Ok(false),
@@ -125,10 +124,7 @@ pub fn unsparse(src: &Path, dst: &Path) -> Result<bool> {
             }
             CHUNK_TYPE_DONT_CARE => {
                 if data_sz > 0 {
-                    std::io::copy(
-                        &mut input.by_ref().take(data_sz),
-                        &mut std::io::sink(),
-                    )?;
+                    std::io::copy(&mut input.by_ref().take(data_sz), &mut std::io::sink())?;
                 }
                 out.seek(SeekFrom::Current(out_bytes as i64))?;
             }
@@ -136,10 +132,7 @@ pub fn unsparse(src: &Path, dst: &Path) -> Result<bool> {
                 let mut crc = [0u8; 4];
                 if data_sz >= 4 {
                     input.read_exact(&mut crc)?;
-                    std::io::copy(
-                        &mut input.by_ref().take(data_sz - 4),
-                        &mut std::io::sink(),
-                    )?;
+                    std::io::copy(&mut input.by_ref().take(data_sz - 4), &mut std::io::sink())?;
                 }
             }
             other => bail!("unknown sparse chunk type {other:#06x} at chunk {chunk_idx}"),
@@ -212,7 +205,10 @@ mod tests {
         let data = std::fs::read(&dst).unwrap();
         assert_eq!(data.len(), 24);
         assert_eq!(&data[..8], b"ABCDEFGH");
-        assert_eq!(&data[8..16], &[0x44, 0x33, 0x22, 0x11, 0x44, 0x33, 0x22, 0x11]);
+        assert_eq!(
+            &data[8..16],
+            &[0x44, 0x33, 0x22, 0x11, 0x44, 0x33, 0x22, 0x11]
+        );
         assert_eq!(&data[16..24], &[0u8; 8]);
         let _ = std::fs::remove_dir_all(&dir);
     }
