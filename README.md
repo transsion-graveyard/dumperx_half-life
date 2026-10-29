@@ -225,9 +225,17 @@ The Rust device-tree generator replaces `twrpdtgen`/`aospdtgen`. It inspects
   duplicate target entries are suppressed.
 
 AOSP tree output: `BoardConfig.mk`, `device.mk`, `Android.bp`,
-`Android.mk`, `AndroidProducts.mk`, `lineage_<device>.mk`, `rootdir/etc/…`,
-`prebuilts/{kernel,dtb.img,dtbo.img}`, `configs/properties/*.prop`,
-`configs/vintf/*.xml`, and `proprietary-files.txt` / `proprietary-files.sha1`.
+`Android.mk`, `AndroidProducts.mk`, `lineage_<device>.mk`,
+`extract-files.py`, `setup-makefiles.py`, `rootdir/Android.{bp,mk}`,
+`rootdir/bin/*.sh`, `rootdir/etc/` (vendor `etc/init/hw`, selected recovery
+ramdisk rc files and the fstab), `prebuilts/{kernel,dtb.img,dtbo.img}`,
+`configs/properties/*.prop`, `configs/vintf/*.xml`, and
+`proprietary-files.txt` / `proprietary-files.sha1`.
+
+The rootdir follows aospdtgen's filtering: only `vendor/bin/*.sh` and
+`vendor/etc/init/hw` files are copied, plus top-level `.rc` files from the
+recovery ramdisk (or boot/init_boot if recovery is absent). It does not dump
+every rc file from every ramdisk into `rootdir/etc`.
 
 TWRP tree output: `BoardConfig.mk`, `device.mk`, `Android.bp`, `Android.mk`,
 `AndroidProducts.mk`, `omni_<device>.mk`, `recovery.fstab`, `recovery/root`,

@@ -15,6 +15,7 @@ use anyhow::Result;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Default)]
@@ -834,6 +835,7 @@ $(call inherit-product-if-exists, vendor/{manufacturer}/{codename}/{codename}-ve
     copy_props(dev, root)?;
     copy_vintf(root, &vintf)?;
     copy_proprietary_files(dev, root)?;
+    write_extract_scripts(dev, root)?;
     copy_rootdir(dev, root)?;
     fs::write(root.join("README.md"), tree_readme(dev, "AOSP/LineageOS"))?;
     Ok(())
@@ -1155,36 +1157,177 @@ fn copy_prebuilts(dev: &DeviceContext, dir: &Path, twrp: bool) -> Result<()> {
 }
 
 fn copy_rootdir(dev: &DeviceContext, root: &Path) -> Result<()> {
-    let etc = root.join("rootdir/etc");
-    util::ensure_dir(&etc)?;
-    if let Some(fstab) = dev.fstab {
-        let name = fstab.path.file_name().unwrap_or_default();
-        util::copy_file(&fstab.path, &etc.join(name))?;
-    }
-    let init_dir = etc.join("init");
-    util::ensure_dir(&init_dir)?;
-    for (_, ramdisk) in &dev.images.ramdisk_dirs {
-        copy_rc_files(ramdisk, &init_dir)?;
-    }
-    // Vendor init scripts are part of the device rootdir in most trees.
-    for sub in ["init", "init/hw"] {
-        let dir = dev.dump_root.join("vendor/etc").join(sub);
-        if dir.is_dir() {
-            if let Ok(entries) = fs::read_dir(&dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_file()
-                        && path
-                            .file_name()
-                            .map(|n| n.to_string_lossy().ends_with(".rc"))
-                            .unwrap_or(false)
-                    {
-                        let name = path.file_name().unwrap().to_string_lossy();
-                        util::copy_file(&path, &init_dir.join(name.as_ref()))?;
-                    }
-                }
+    let rootdir = root.join("rootdir");
+    let bin_dir = rootdir.join("bin");
+    let etc_dir = rootdir.join("etc");
+    util::ensure_dir(&bin_dir)?;
+    util::ensure_dir(&etc_dir)?;
+
+    // aospdtgen only puts vendor/bin/*.sh into rootdir/bin.
+    let vendor_bin = dev.dump_root.join("vendor/bin");
+    let mut bin_files = Vec::new();
+    if vendor_bin.is_dir() {
+        for entry in walkdir::WalkDir::new(&vendor_bin).follow_links(false) {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            if path.extension().map(|e| e == "sh").unwrap_or(false) {
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned();
+                util::copy_file(path, &bin_dir.join(&name))?;
+                bin_files.push(name);
             }
         }
+    }
+    bin_files.sort();
+    bin_files.dedup();
+
+    // aospdtgen rootdir/etc contains vendor/etc/init/hw files.
+    let init_hw = dev.dump_root.join("vendor/etc/init/hw");
+    let mut etc_files = Vec::new();
+    if init_hw.is_dir() {
+        for entry in fs::read_dir(&init_hw)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            util::copy_file(&path, &etc_dir.join(&name))?;
+            etc_files.push(name);
+        }
+    }
+    etc_files.sort();
+    etc_files.dedup();
+
+    // Recovery rc files come only from the recovery ramdisk if present,
+    // otherwise from boot (and finally init_boot).  Only top-level files are
+    // considered, exactly like aospdtgen's ramdisk iteration.
+    let recovery_ramdisk = pick_recovery_ramdisk(dev);
+    let mut recovery_rcs = Vec::new();
+    if let Some(ramdisk) = recovery_ramdisk {
+        for entry in fs::read_dir(ramdisk)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.ends_with(".rc") {
+                util::copy_file(&path, &etc_dir.join(&name))?;
+                recovery_rcs.push(name);
+            }
+        }
+    }
+    recovery_rcs.sort();
+    recovery_rcs.dedup();
+
+    let fstab_name = dev
+        .fstab
+        .and_then(|f| f.path.file_name().map(|n| n.to_string_lossy().into_owned()));
+    if let Some(fstab) = dev.fstab {
+        if let Some(name) = &fstab_name {
+            util::copy_file(&fstab.path, &etc_dir.join(name))?;
+        }
+    }
+
+    fs::write(
+        rootdir.join("Android.bp"),
+        rootdir_android_bp(&bin_files, &etc_files, fstab_name.as_deref()),
+    )?;
+    fs::write(
+        rootdir.join("Android.mk"),
+        rootdir_android_mk(&recovery_rcs),
+    )?;
+    Ok(())
+}
+
+fn pick_recovery_ramdisk<'a>(dev: &'a DeviceContext<'a>) -> Option<&'a Path> {
+    let mut best: Option<&Path> = None;
+    for (source, path) in &dev.images.ramdisk_dirs {
+        let correct = if source.contains(":recovery") || source == "recovery.img" {
+            0
+        } else if source == "boot.img" {
+            1
+        } else if source == "init_boot.img" {
+            2
+        } else {
+            3
+        };
+        if correct == 0 {
+            return Some(path);
+        }
+        if best.is_none() {
+            best = Some(path);
+        }
+    }
+    best
+}
+
+fn rootdir_android_bp(bin_files: &[String], etc_files: &[String], fstab: Option<&str>) -> String {
+    let mut out = String::from(
+        "# SPDX-FileCopyrightText: The LineageOS Project\n# SPDX-License-Identifier: Apache-2.0\n\n",
+    );
+    out.push_str("// Init scripts\n");
+    for file in bin_files {
+        out.push_str(&format!(
+            "sh_binary {{\n    name: \"{file}\",\n    src: \"bin/{file}\",\n    vendor: true,\n}}\n\n"
+        ));
+    }
+    out.push_str("// Init configuration files\n");
+    for file in etc_files {
+        if file.starts_with("fstab.") {
+            continue;
+        }
+        out.push_str(&format!(
+            "prebuilt_etc {{\n    name: \"{file}\",\n    src: \"etc/{file}\",\n    sub_dir: \"init/hw\",\n    vendor: true,\n}}\n\n"
+        ));
+    }
+    if let Some(fstab) = fstab {
+        out.push_str(&format!(
+            "// fstab\nprebuilt_etc {{\n    name: \"{fstab}\",\n    src: \"etc/{fstab}\",\n    vendor: true,\n}}\n"
+        ));
+    }
+    out
+}
+
+fn rootdir_android_mk(recovery_rcs: &[String]) -> String {
+    let mut out = String::from(
+        "# SPDX-FileCopyrightText: The LineageOS Project\n# SPDX-License-Identifier: Apache-2.0\n\nLOCAL_PATH := $(call my-dir)\n\n# Recovery init configuration files\n",
+    );
+    for file in recovery_rcs {
+        out.push_str(&format!(
+            "include $(CLEAR_VARS)\nLOCAL_MODULE       := {file}\nLOCAL_MODULE_TAGS  := optional\nLOCAL_MODULE_CLASS := ETC\nLOCAL_SRC_FILES    := etc/{file}\nLOCAL_MODULE_PATH  := $(TARGET_ROOT_OUT)\ninclude $(BUILD_PREBUILT)\n\n"
+        ));
+    }
+    out
+}
+
+fn write_extract_scripts(dev: &DeviceContext, root: &Path) -> Result<()> {
+    let extract = format!(
+        "#!/usr/bin/env -S PYTHONPATH=../../../tools/extract-utils python3\n#\n# SPDX-FileCopyrightText: The LineageOS Project\n# SPDX-License-Identifier: Apache-2.0\n\nfrom extract_utils.main import (\n    ExtractUtils,\n    ExtractUtilsModule,\n)\n\nnamespace_imports = [\n    'device/{manufacturer}/{codename}',\n]\n\nmodule = ExtractUtilsModule(\n    '{codename}',\n    '{manufacturer}',\n    namespace_imports=namespace_imports,\n)\n\nif __name__ == '__main__':\n    utils = ExtractUtils.device(module)\n    utils.run()\n",
+        manufacturer = dev.manufacturer,
+        codename = dev.codename,
+    );
+    // setup-makefiles.py is intentionally a tiny shebang wrapper, matching
+    // the upstream aospdtgen template.
+    let setup = "#!./extract-files.py --regenerate_makefiles\n#\n# SPDX-FileCopyrightText: The LineageOS Project\n# SPDX-License-Identifier: Apache-2.0\n";
+    let extract_path = root.join("extract-files.py");
+    let setup_path = root.join("setup-makefiles.py");
+    fs::write(&extract_path, extract)?;
+    fs::write(&setup_path, setup)?;
+    for path in [extract_path, setup_path] {
+        let mut perms = fs::metadata(&path)?.permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(path, perms)?;
     }
     Ok(())
 }
