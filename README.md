@@ -25,9 +25,10 @@ The old `dumper.sh` cloned four GitHub repositories, curled
 `extract-ikconfig`, and used `uv`/`uvx` to fetch Python packages and tools
 from the network on every run. All of that is gone:
 
-- The DumprX-specific helper scripts and binaries are vendored in `utils/`;
-  standard host tools (`dtc`, `lz4`, `xz`, `bzip2`, `zstd`, `brotli`) are
-  checked by `setup.sh`.
+- DumprX-specific helpers and host tools (`7zz`, EROFS/F2FS extractors,
+  `dtc`, `lz4`, `xz`, `bzip2`, `zstd`, `brotli`, portable Python) are
+  embedded in the standalone binary. Development builds can still use the
+  vendored `utils/` tree.
 - Cargo dependencies are vendored in `vendor/` with `.cargo/config.toml`.
 - `dumper.sh` is a thin wrapper around `target/release/dumprx`; it builds
   with `cargo build --offline` and executes the Rust binary.
@@ -74,6 +75,30 @@ Malformed lines are reported with `file:line` in the dump log and in
 
 ## Build
 
+### Fully standalone binary (recommended)
+
+```bash
+./build-standalone.sh
+```
+
+This produces `dist/dumprx`, a single static x86_64 Linux ELF with an
+embedded runtime: helper binaries, their shared libraries, a glibc loader
+and portable Python. After building, the binary can be copied anywhere and
+does not need `utils/`, Python, `dtc`, `7zz`, `lz4`, `xz`, `zstd` or
+`brotli` installed on the host.
+
+On first run it extracts the embedded runtime to:
+
+```text
+~/.cache/dumprx/runtime-<version>-<archive-hash>/
+```
+
+The extracted runtime is about 110 MB. Delete that directory to force a
+fresh extraction, or set `DUMPRX_RUNTIME_DIR` to use a pre-extracted
+runtime directory.
+
+### Development build
+
 ```bash
 cargo build --offline --release
 ```
@@ -84,11 +109,9 @@ or:
 ./setup.sh
 ```
 
-`setup.sh` checks for `cargo`, `python3` (legacy bridge), `dtc`, `lz4`, `xz`,
-`bzip2`, `zstd` and `brotli`, and builds the binary. The 7-Zip, EROFS,
-F2FS, magiskboot, RUU, nb0, unsin and Amlogic tools are already in
-`utils/`. `payload-dumper-go` is kept only as a fallback for payload
-manifests the native parser does not understand yet.
+`setup.sh` prefers the standalone musl build when the musl target is
+installed. Development builds use the vendored `utils/` tree and host tools;
+the standalone build embeds both.
 
 ## Usage
 

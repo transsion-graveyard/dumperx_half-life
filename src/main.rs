@@ -20,6 +20,7 @@ mod proprietary;
 mod proprietary_rules;
 mod props;
 mod ramdisk;
+mod runtime;
 mod sdat;
 mod sha1sum;
 mod sparse;
@@ -144,6 +145,11 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
+    // Standalone builds carry their helpers in the binary.  Development
+    // builds can override this with DUMPRX_PROJECT_DIR.
+    if std::env::var_os("DUMPRX_PROJECT_DIR").is_none() {
+        runtime::ensure()?;
+    }
     let cli = Cli::parse();
     match cli.command {
         Commands::Dump {

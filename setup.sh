@@ -68,9 +68,15 @@ if [[ ${missing} -ne 0 ]]; then
 fi
 
 echo
-echo "Building dumprx (offline)..."
-( cd "${PROJECT_DIR}" && cargo build --offline --release )
+echo "Building standalone dumprx (offline)..."
+if rustup target list --installed 2>/dev/null | grep -qx "x86_64-unknown-linux-musl"; then
+	( cd "${PROJECT_DIR}" && ./build-standalone.sh )
+else
+	echo "  musl target not installed; building the glibc release instead."
+	( cd "${PROJECT_DIR}" && cargo build --offline --release )
+fi
 
 echo
 printf "${GREEN}Setup complete.${NORMAL}\n"
 echo "Run: ./dumper.sh <firmware file, archive or extracted dump directory>"
+echo "Standalone binary (if built): ${PROJECT_DIR}/dist/dumprx"

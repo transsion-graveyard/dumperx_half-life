@@ -6,7 +6,7 @@ use crate::util;
 use anyhow::{Context, Result, bail};
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Compression {
@@ -88,7 +88,7 @@ pub fn decompress(data: &[u8]) -> Result<(Compression, Vec<u8>)> {
 fn run_filter(program: &str, args: &[&str], input: &[u8]) -> Result<Vec<u8>> {
     let tool = util::find_tool(program)
         .with_context(|| format!("decompressor '{program}' not found in utils/bin or PATH"))?;
-    let mut child = Command::new(&tool)
+    let mut child = util::tool_command(&tool)
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

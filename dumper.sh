@@ -7,14 +7,17 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
-BIN="${PROJECT_DIR}/target/release/dumprx"
+BIN="${PROJECT_DIR}/dist/dumprx"
 
 if ! [[ -x "${BIN}" ]]; then
-	echo "[*] Building dumprx (offline)..." >&2
-	( cd "${PROJECT_DIR}" && cargo build --offline --release ) || {
-		echo "[ERROR] Build failed. Run 'cargo build --offline --release' in ${PROJECT_DIR}" >&2
-		exit 1
-	}
+	echo "[*] Building standalone dumprx (offline)..." >&2
+	if ! ( cd "${PROJECT_DIR}" && ./build-standalone.sh ); then
+		BIN="${PROJECT_DIR}/target/release/dumprx"
+		if ! [[ -x "${BIN}" ]]; then
+			echo "[ERROR] Standalone build failed and no release binary exists." >&2
+			exit 1
+		fi
+	fi
 fi
 
 if [[ $# -eq 0 ]]; then

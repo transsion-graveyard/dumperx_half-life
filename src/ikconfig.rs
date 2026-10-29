@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 const START: &[u8] = b"IKCFG_ST";
 const END: &[u8] = b"IKCFG_ED";
@@ -76,7 +76,7 @@ fn try_markers(data: &[u8]) -> Option<String> {
 fn run_filter(program: &str, args: Vec<&str>, input: &[u8]) -> Result<Vec<u8>> {
     let tool = crate::util::find_tool(program)
         .with_context(|| format!("decompressor '{program}' not found"))?;
-    let mut child = Command::new(&tool)
+    let mut child = crate::util::tool_command(&tool)
         .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

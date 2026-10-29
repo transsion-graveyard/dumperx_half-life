@@ -13,3 +13,4 @@ __pycache__
 target/
 /out/
 utils/vendor/android_tools/working/
+dist/

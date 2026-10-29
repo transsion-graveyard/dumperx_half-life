@@ -11,6 +11,9 @@ pub fn project_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("DUMPRX_PROJECT_DIR") {
         return PathBuf::from(dir);
     }
+    if let Some(root) = crate::runtime::root() {
+        return root.to_path_buf();
+    }
 
     // Prefer the directory layout around the binary so a release tarball
     // containing `dumprx` plus `utils/` works after being moved anywhere.
@@ -84,6 +87,94 @@ pub fn require_tool(name: &str) -> Result<PathBuf> {
     })
 }
 
+/// Build a Command for a helper, using the embedded glibc loader and
+/// libraries when running a dynamically linked runtime helper.
+pub fn tool_command(program: &Path) -> Command {
+    let mut cmd;
+    if let Some(root) = crate::runtime::root() {
+        let libdir = root.join("lib");
+        let loader = libdir.join("ld-linux-x86-64.so.2");
+        if program.starts_with(root.join("utils")) && loader.is_file() && elf_has_interp(program) {
+            cmd = Command::new(&loader);
+            cmd.arg("--inhibit-cache");
+            cmd.arg("--library-path").arg(&libdir).arg(program);
+        } else {
+            cmd = Command::new(program);
+        }
+        cmd.env("LD_LIBRARY_PATH", &libdir);
+        // Let tools spawned by scripts (for example Python's KDZ zstd
+        // fallback) find the bundled utilities too.
+        let bundled_bin = root.join("utils/bin");
+        let mut paths = vec![bundled_bin];
+        if let Some(existing) = std::env::var_os("PATH") {
+            paths.extend(std::env::split_paths(&existing));
+        }
+        if let Ok(joined) = std::env::join_paths(paths) {
+            cmd.env("PATH", joined);
+        }
+
+        let name = program
+            .file_name()
+            .map(|n| n.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        if name.starts_with("python3") {
+            cmd.env("PYTHONHOME", root.join("python"));
+            let python_lib = root.join("python/lib");
+            if let Some(version_dir) = fs::read_dir(&python_lib).ok().and_then(|entries| {
+                entries.filter_map(|e| e.ok()).map(|e| e.path()).find(|p| {
+                    p.file_name()
+                        .map(|n| n.to_string_lossy().starts_with("python3."))
+                        .unwrap_or(false)
+                })
+            }) {
+                let paths = [
+                    version_dir.clone(),
+                    version_dir.join("lib-dynload"),
+                    version_dir.join("site-packages"),
+                ];
+                let joined = std::env::join_paths(paths).unwrap_or_default();
+                cmd.env("PYTHONPATH", joined);
+            }
+        }
+    } else {
+        cmd = Command::new(program);
+    }
+    cmd
+}
+
+fn elf_has_interp(path: &Path) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut file) = fs::File::open(path) else {
+        return false;
+    };
+    let mut header = [0u8; 64];
+    if file.read_exact(&mut header).is_err() {
+        return false;
+    }
+    if &header[0..4] != b"\x7fELF" || header[4] != 2 {
+        return false;
+    }
+    let phoff = u64::from_le_bytes(header[32..40].try_into().unwrap());
+    let phentsize = u16::from_le_bytes(header[54..56].try_into().unwrap()) as usize;
+    let phnum = u16::from_le_bytes(header[56..58].try_into().unwrap()) as usize;
+    if phentsize < 4 || phnum == 0 || phnum > 1024 {
+        return false;
+    }
+    if file.seek(SeekFrom::Start(phoff)).is_err() {
+        return false;
+    }
+    let mut ph = vec![0u8; phentsize];
+    for _ in 0..phnum {
+        if file.read_exact(&mut ph).is_err() {
+            return false;
+        }
+        if u32::from_le_bytes(ph[0..4].try_into().unwrap()) == 3 {
+            return true;
+        }
+    }
+    false
+}
+
 /// A command runner that streams child output to our stdout/stderr.
 pub struct Runner {
     verbose: bool,
@@ -115,7 +206,7 @@ impl Runner {
                     .join(" ")
             ));
         }
-        let mut cmd = Command::new(program);
+        let mut cmd = tool_command(program);
         cmd.args(args);
         if let Some(cwd) = cwd {
             cmd.current_dir(cwd);
@@ -169,7 +260,7 @@ impl Runner {
         args: &[&OsStr],
         cwd: Option<&Path>,
     ) -> Result<std::process::Output> {
-        let mut cmd = Command::new(program);
+        let mut cmd = tool_command(program);
         cmd.args(args);
         if let Some(cwd) = cwd {
             cmd.current_dir(cwd);
@@ -197,7 +288,7 @@ impl Runner {
 
     /// Run a command and treat a non-zero exit as a soft failure.
     pub fn try_run(&self, program: &Path, args: &[&OsStr], cwd: Option<&Path>) -> bool {
-        let mut cmd = Command::new(program);
+        let mut cmd = tool_command(program);
         cmd.args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -354,7 +445,7 @@ pub fn stream_to_file(program: &Path, args: &[&OsStr], input: &Path, output: &Pa
     let stdin = fs::File::open(input).with_context(|| format!("opening {}", input.display()))?;
     let stdout =
         fs::File::create(output).with_context(|| format!("creating {}", output.display()))?;
-    let status = Command::new(program)
+    let status = tool_command(program)
         .args(args)
         .stdin(Stdio::from(stdin))
         .stdout(Stdio::from(stdout))

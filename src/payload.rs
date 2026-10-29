@@ -11,7 +11,7 @@ use anyhow::{Context, Result, bail};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 const MAGIC: &[u8; 4] = b"CrAU";
 
@@ -167,7 +167,7 @@ fn write_extents(sink: &mut File, block_size: u64, extents: &[Extent], data: &[u
 fn run_filter(program: &str, args: &[&str], input: &[u8]) -> Result<Vec<u8>> {
     let tool = util::find_tool(program)
         .with_context(|| format!("payload decompressor '{program}' not found"))?;
-    let mut child = Command::new(&tool)
+    let mut child = util::tool_command(&tool)
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

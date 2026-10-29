@@ -1037,9 +1037,9 @@ fn decompress_file(input: &Path, output: &Path) -> Result<()> {
 
 fn run_brotli(data: &[u8]) -> Result<Vec<u8>> {
     use std::io::Write;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
     let tool = util::find_tool("brotli").context("brotli not found in PATH")?;
-    let mut child = Command::new(tool)
+    let mut child = util::tool_command(&tool)
         .args(["-d", "-c"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
