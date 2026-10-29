@@ -175,6 +175,10 @@ The Rust device-tree generator replaces `twrpdtgen`/`aospdtgen`. It inspects
 - If a ramdisk or kernel is missing, the generator emits a warning, records
   it in the tree README, and still produces the tree. It never asserts or
   exits silently.
+- AOSP device identifiers drop the prefix before the last `-`
+  (`TECNO-CM6` -> `cm6`) because AOSP device names cannot contain dashes;
+  the detected codename remains in the tree README. Names without a dash are
+  used unchanged (`mssi_64_64only_cn_armv82` stays as-is).
 - TWRP `recovery.fstab` is derived from the dump fstab; rootdir `*.rc` files
   and `default.prop` are copied from the available ramdisks.
 - Properties live in `configs/properties/<partition>.prop` and VINTF files in
@@ -190,8 +194,8 @@ The Rust device-tree generator replaces `twrpdtgen`/`aospdtgen`. It inspects
 
 AOSP tree output: `BoardConfig.mk`, `device.mk`, `Android.bp`,
 `Android.mk`, `AndroidProducts.mk`, `lineage_<device>.mk`, `rootdir/etc/…`,
-`prebuilts/{kernel,dtb.img,dtbo.img}`, `configs/properties/*.prop` and
-`configs/vintf/*.xml`.
+`prebuilts/{kernel,dtb.img,dtbo.img}`, `configs/properties/*.prop`,
+`configs/vintf/*.xml`, and `proprietary-files.txt` / `proprietary-files.sha1`.
 
 TWRP tree output: `BoardConfig.mk`, `device.mk`, `Android.bp`, `Android.mk`,
 `AndroidProducts.mk`, `omni_<device>.mk`, `recovery.fstab`, `recovery/root`,
