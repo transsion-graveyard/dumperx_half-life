@@ -206,6 +206,23 @@ TWRP tree output: `BoardConfig.mk`, `device.mk`, `Android.bp`, `Android.mk`,
 `AndroidProducts.mk`, `omni_<device>.mk`, `recovery.fstab`, `recovery/root`,
 `prebuilt/{kernel,dtb.img,dtbo.img}` and `vendorsetup.sh`.
 
+### Proprietary files lists
+
+Two lists are generated:
+
+- `out/proprietary-files.txt` — android_tools-style sections plus vendor
+  `Misc`. Generic `system_ext/{app,priv-app,framework,overlay}` files are
+  excluded from `Misc` unless a section explicitly matches them.
+- `out/aosp-device-tree/proprietary-files.txt` — aospdtgen-style scope:
+  `Misc` is limited to Treble partitions (`vendor`, `odm`, `vendor_dlkm`,
+  `odm_dlkm`), so unmatched `system`/`system_ext`/`product` files (including
+  their APKs and framework jars) are not dumped.
+
+Explicitly matched blobs (for example HotwordEnrollment, NFC, Google
+overlays) are still kept. Each list has a matching `.sha1` manifest, and
+symlinks are attached to their target blob once with
+`;SYMLINK=link1,link2`.
+
 ## Supported formats
 
 Native Rust:

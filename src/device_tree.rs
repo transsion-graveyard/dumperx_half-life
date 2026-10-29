@@ -1135,15 +1135,7 @@ fn copy_props(dev: &DeviceContext, root: &Path) -> Result<()> {
 }
 
 fn copy_proprietary_files(dev: &DeviceContext, root: &Path) -> Result<()> {
-    let source = dev.dump_root.join("proprietary-files.txt");
-    if !source.is_file() {
-        crate::proprietary::generate(dev.dump_root, dev.meta, &dev.meta.description)?;
-    }
-    util::copy_file(&source, &root.join("proprietary-files.txt"))?;
-    let sha1 = dev.dump_root.join("proprietary-files.sha1");
-    if sha1.is_file() {
-        util::copy_file(&sha1, &root.join("proprietary-files.sha1"))?;
-    }
+    crate::proprietary::generate_aosp_tree(dev.dump_root, dev.meta, &dev.meta.description, root)?;
     Ok(())
 }
 

@@ -9,8 +9,119 @@ use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MiscScope {
+    /// Original android_tools behavior: unmatched system_ext + vendor blobs.
+    Shell,
+    /// aospdtgen behavior: unmatched files from Treble partitions only
+    /// (vendor/odm/vendor_dlkm/odm_dlkm), never system_ext/system.
+    TrebleOnly,
+}
+
 pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> Result<PathBuf> {
     util::step("Generating proprietary-files.txt");
+    let (out, seen) = build_list(
+        dump_root,
+        description,
+        MiscScope::Shell,
+        "# All blobs from",
+        true,
+    )?;
+    let out_path = dump_root.join("proprietary-files.txt");
+    fs::write(&out_path, &out)?;
+    util::info(format!(
+        "wrote {} ({} entries, {} symlink(s))",
+        out_path.display(),
+        seen.len(),
+        count_links(&out)
+    ));
+    write_sha1(
+        dump_root,
+        &out_path,
+        &dump_root.join("proprietary-files.sha1"),
+    )?;
+    Ok(out_path)
+}
+
+/// Generate the proprietary-files.txt that belongs to the AOSP device tree.
+/// This follows aospdtgen's partition scope: unmatched system/system_ext/
+/// product files are not dumped into Misc, which keeps prebuilt APKs and
+/// framework jars out of the list unless a section explicitly asks for them.
+pub fn generate_aosp_tree(
+    dump_root: &Path,
+    _meta: &DeviceMetadata,
+    description: &str,
+    tree_root: &Path,
+) -> Result<()> {
+    util::step("Generating AOSP device-tree proprietary-files.txt");
+    let (out, seen) = build_list(
+        dump_root,
+        description,
+        MiscScope::TrebleOnly,
+        "# Unpinned blobs from",
+        false,
+    )?;
+    let out_path = tree_root.join("proprietary-files.txt");
+    fs::write(&out_path, &out)?;
+    util::info(format!(
+        "wrote {} ({} entries, {} symlink(s))",
+        out_path.display(),
+        seen.len(),
+        count_links(&out)
+    ));
+    write_sha1(
+        dump_root,
+        &out_path,
+        &tree_root.join("proprietary-files.sha1"),
+    )?;
+    Ok(())
+}
+
+fn count_links(text: &str) -> usize {
+    text.lines()
+        .filter(|line| !line.starts_with('#'))
+        .filter_map(|line| line.split_once(";SYMLINK="))
+        .map(|(_, links)| links.split(',').count())
+        .sum()
+}
+
+fn write_sha1(dump_root: &Path, list: &Path, dest: &Path) -> Result<()> {
+    let text = fs::read_to_string(list)?;
+    let mut sha1_text = String::new();
+    for line in text.lines() {
+        if line.is_empty() || line.starts_with('#') {
+            sha1_text.push_str(line);
+            sha1_text.push('\n');
+            continue;
+        }
+        let without_optional = line.trim_start_matches('-');
+        let blob = without_optional
+            .split(";SYMLINK=")
+            .next()
+            .unwrap_or(without_optional);
+        if let Some(path) = sha1sum::resolve_blob(dump_root, blob) {
+            if let Ok(hash) = sha1sum::sha1_file(&path) {
+                sha1_text.push_str(line);
+                sha1_text.push('|');
+                sha1_text.push_str(&hash);
+                sha1_text.push('\n');
+                continue;
+            }
+        }
+        sha1_text.push_str(line);
+        sha1_text.push('\n');
+    }
+    fs::write(dest, sha1_text)?;
+    Ok(())
+}
+
+fn build_list(
+    dump_root: &Path,
+    description: &str,
+    misc_scope: MiscScope,
+    header: &str,
+    log: bool,
+) -> Result<(String, HashSet<String>)> {
     let files = collect_files(dump_root)?;
     let symlinks = collect_symlinks(dump_root)?;
 
@@ -89,7 +200,7 @@ pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> 
     }
 
     let mut out = String::new();
-    out.push_str(&format!("# All blobs from {description}, unless pinned\n"));
+    out.push_str(&format!("{header} {description}, unless pinned\n"));
     let mut seen: HashSet<String> = HashSet::new();
     // The original script writes one file per section and emits them in
     // alphabetical order (`find ... | sort`), so a blob that matches several
@@ -113,8 +224,9 @@ pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> 
         }
     }
 
-    // Remaining system_ext and vendor blobs become Misc, exactly like the
-    // original script.
+    // Remaining blobs become Misc.  The shell script uses system_ext+vendor;
+    // aospdtgen only dumps Treble partitions (vendor/odm) and leaves SSI
+    // partitions (system/system_ext/product) to the explicit sections.
     let remove = read_list("remove.txt");
     let ignore = read_list("ignore.txt");
     let mut misc = Vec::new();
@@ -122,7 +234,23 @@ pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> 
         if seen.contains(path) {
             continue;
         }
-        if !(path.starts_with("system_ext/") || path.starts_with("vendor/")) {
+        let in_scope = match misc_scope {
+            MiscScope::Shell => path.starts_with("system_ext/") || path.starts_with("vendor/"),
+            MiscScope::TrebleOnly => {
+                path.starts_with("vendor/")
+                    || path.starts_with("odm/")
+                    || path.starts_with("vendor_dlkm/")
+                    || path.starts_with("odm_dlkm/")
+            }
+        };
+        if !in_scope {
+            continue;
+        }
+        // Do not dump generic SSI apps/frameworks/overlays into Misc.
+        // aospdtgen excludes these (system_ext is not a Treble partition and
+        // its apps/frameworks are not automatically proprietary blobs); a
+        // blob that a section explicitly matches is still kept above.
+        if is_generic_ssi_app(path) {
             continue;
         }
         if remove.iter().any(|prefix| path.starts_with(prefix)) {
@@ -144,45 +272,14 @@ pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> 
         }
     }
 
-    let out_path = dump_root.join("proprietary-files.txt");
-    fs::write(&out_path, out)?;
-    util::info(format!(
-        "wrote {} ({} entries, {} symlink(s))",
-        out_path.display(),
-        seen.len(),
-        target_links.values().map(Vec::len).sum::<usize>()
-    ));
-
-    // proprietary-files.sha1
-    let sha1_path = dump_root.join("proprietary-files.sha1");
-    let mut sha1_text =
-        format!("# All blobs are from \"{description}\" and are pinned with sha1sum values\n");
-    for line in fs::read_to_string(&out_path)?.lines() {
-        if line.is_empty() || line.starts_with('#') {
-            sha1_text.push_str(line);
-            sha1_text.push('\n');
-            continue;
-        }
-        // `path;SYMLINK=link1,link2|sha1` hashes the target blob only.
-        let without_optional = line.trim_start_matches('-');
-        let blob = without_optional
-            .split(";SYMLINK=")
-            .next()
-            .unwrap_or(without_optional);
-        if let Some(path) = sha1sum::resolve_blob(dump_root, blob) {
-            if let Ok(hash) = sha1sum::sha1_file(&path) {
-                sha1_text.push_str(line);
-                sha1_text.push('|');
-                sha1_text.push_str(&hash);
-                sha1_text.push('\n');
-                continue;
-            }
-        }
-        sha1_text.push_str(line);
-        sha1_text.push('\n');
+    if log {
+        util::info(format!(
+            "proprietary list: {} entries, {} symlink(s)",
+            seen.len(),
+            target_links.values().map(Vec::len).sum::<usize>()
+        ));
     }
-    fs::write(&sha1_path, sha1_text)?;
-    Ok(out_path)
+    Ok((out, seen))
 }
 
 #[derive(Debug, Clone)]
@@ -403,6 +500,21 @@ fn collect_files(root: &Path) -> Result<Vec<String>> {
     Ok(files)
 }
 
+fn is_generic_ssi_app(path: &str) -> bool {
+    [
+        "system_ext/app/",
+        "system_ext/priv-app/",
+        "system_ext/framework/",
+        "system_ext/overlay/",
+        "system/system/app/",
+        "system/system/priv-app/",
+        "system/system/framework/",
+        "system/system/overlay/",
+    ]
+    .iter()
+    .any(|prefix| path.starts_with(prefix))
+}
+
 fn read_list(name: &str) -> Vec<String> {
     let path = util::utils_dir()
         .join("vendor/android_tools/helpers/lists")
@@ -514,6 +626,43 @@ mod tests {
         assert!(pat_match("libfoo|libbar", "vendor/lib64/libbar.so"));
         assert!(!pat_match("libfoo|libbar", "vendor/lib64/libbaz.so"));
         assert!(pat_match(".*\\.so$", "vendor/lib64/libbaz.so"));
+    }
+
+    #[test]
+    fn excludes_generic_system_ext_apps_but_keeps_vendor_and_odm_misc() {
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".work/test-proprietary-misc");
+        let _ = std::fs::remove_dir_all(&dir);
+        for path in [
+            "system_ext/app/Foo/Foo.apk",
+            "system_ext/framework/foo.jar",
+            "system_ext/lib64/libssi.so",
+            "vendor/app/Bar/Bar.apk",
+            "vendor/lib64/libvendor.so",
+            "odm/lib64/libodm.so",
+        ] {
+            let full = dir.join(path);
+            std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+            std::fs::write(full, b"x").unwrap();
+        }
+        let meta = crate::props::extract_metadata(&crate::props::PropStore::default(), None);
+        generate(&dir, &meta, "test").unwrap();
+        let root = std::fs::read_to_string(dir.join("proprietary-files.txt")).unwrap();
+        assert!(!root.contains("system_ext/app/Foo/Foo.apk"));
+        assert!(!root.contains("system_ext/framework/foo.jar"));
+        assert!(root.contains("system_ext/lib64/libssi.so"));
+        assert!(root.contains("vendor/app/Bar/Bar.apk"));
+        assert!(root.contains("vendor/lib64/libvendor.so"));
+        assert!(!root.contains("odm/lib64/libodm.so"));
+
+        generate_aosp_tree(&dir, &meta, "test", &dir).unwrap();
+        let tree = std::fs::read_to_string(dir.join("proprietary-files.txt")).unwrap();
+        assert!(!tree.contains("system_ext/app/Foo/Foo.apk"));
+        assert!(!tree.contains("system_ext/lib64/libssi.so"));
+        assert!(tree.contains("vendor/app/Bar/Bar.apk"));
+        assert!(tree.contains("vendor/lib64/libvendor.so"));
+        assert!(tree.contains("odm/lib64/libodm.so"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
