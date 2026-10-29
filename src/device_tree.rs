@@ -578,37 +578,65 @@ fn partition_block(dev: &DeviceContext, twrp: bool) -> String {
         out.push_str("TARGET_COPY_OUT_VENDOR := vendor\n");
     }
     if !img.dynamic_partitions.is_empty() {
-        if img.super_size > 0 {
+        let platform = dev.meta.platform.to_lowercase();
+        let is_mtk = platform.starts_with("mt") || img.super_group.to_lowercase().contains("mtk");
+        let group = if is_mtk {
+            "mtk_dynamic_partitions".to_string()
+        } else {
+            format!("{}_dynamic_partitions", dev.manufacturer)
+        };
+        let token = if is_mtk {
+            "MTK".to_string()
+        } else {
+            dev.manufacturer.to_uppercase()
+        };
+
+        // The super partition contains the liblp metadata (two geometry
+        // copies + metadata slots).  Device trees conventionally reserve
+        // 4 MiB for it when deriving the usable dynamic-partition size.
+        let super_size = if img.super_size > 0 {
+            img.super_size
+        } else if img.super_group_size > 0 {
+            img.super_group_size + 4 * 1024 * 1024
+        } else {
+            0
+        };
+        if super_size > 0 {
+            out.push_str(&format!("BOARD_SUPER_PARTITION_SIZE := {super_size}\n"));
             out.push_str(&format!(
-                "BOARD_SUPER_PARTITION_SIZE := {}\n",
-                img.super_size
+                "# partition-size:super: {super_size:x} (from liblp metadata)\n"
             ));
         } else {
             out.push_str(
                 "BOARD_SUPER_PARTITION_SIZE := 9126805504 # TODO: verify from super metadata\n",
             );
         }
-        let group = format!("{}_dynamic_partitions", dev.manufacturer);
         out.push_str(&format!("BOARD_SUPER_PARTITION_GROUPS := {group}\n"));
-        let upper = dev.manufacturer.to_uppercase();
         out.push_str(&format!(
-            "BOARD_{upper}_DYNAMIC_PARTITIONS_PARTITION_LIST := \\\n"
+            "BOARD_{token}_DYNAMIC_PARTITIONS_PARTITION_LIST := $(ALL_PARTITIONS)\n"
         ));
-        for (index, part) in img.dynamic_partitions.iter().enumerate() {
-            if index + 1 == img.dynamic_partitions.len() {
-                out.push_str(&format!("    {part}\n"));
-            } else {
-                out.push_str(&format!("    {part} \\\n"));
-            }
-        }
-        if img.super_group_size > 0 {
+        out.push_str(&format!(
+            "# $(ALL_PARTITIONS) currently expands to: {}\n",
+            img.dynamic_partitions.join(" ")
+        ));
+        let dynamic_size = if super_size > 4 * 1024 * 1024 {
+            super_size - 4 * 1024 * 1024
+        } else if img.super_group_size > 0 {
+            img.super_group_size
+        } else {
+            0
+        };
+        if dynamic_size > 0 {
             out.push_str(&format!(
-                "BOARD_{upper}_DYNAMIC_PARTITIONS_SIZE := {}\n",
-                img.super_group_size
+                "BOARD_{token}_DYNAMIC_PARTITIONS_SIZE := {dynamic_size}\n"
+            ));
+            out.push_str(&format!(
+                "# {super_size} - {} (4 MiB) = {dynamic_size}\n",
+                4 * 1024 * 1024
             ));
         } else {
             out.push_str(&format!(
-                "BOARD_{upper}_DYNAMIC_PARTITIONS_SIZE := 9122611200 # TODO: verify from super metadata\n"
+                "BOARD_{token}_DYNAMIC_PARTITIONS_SIZE := 9122611200 # TODO: verify from super metadata\n"
             ));
         }
     }
@@ -653,10 +681,14 @@ fn generate_aosp(root: &Path, dev: &DeviceContext) -> Result<()> {
     fs::create_dir_all(root)?;
     fs::create_dir_all(root.join("prebuilts"))?;
     fs::create_dir_all(root.join("rootdir/etc"))?;
+    fs::create_dir_all(root.join("configs/properties"))?;
+    fs::create_dir_all(root.join("configs/vintf"))?;
+    let vintf = find_vintf(dev);
 
     let aosp_board = format!(
         "\
 DEVICE_PATH := device/{manufacturer}/{codename}
+CONFIGS_PATH := $(DEVICE_PATH)/configs
 
 {arch}
 # Bootloader
@@ -669,7 +701,9 @@ TARGET_NO_BOOTLOADER := true
 TARGET_BOARD_PLATFORM := {platform}
 
 # Properties
+PROPS_PATH := $(CONFIGS_PATH)/properties
 {props}
+{vintf}
 {recovery}
 ",
         manufacturer = dev.manufacturer,
@@ -680,6 +714,7 @@ TARGET_BOARD_PLATFORM := {platform}
         partitions = partition_block(dev, false),
         platform = dev.meta.platform,
         props = prop_block(dev),
+        vintf = vintf_block(&vintf),
         recovery = recovery_block(dev, false),
     );
     fs::write(root.join("BoardConfig.mk"), aosp_board)?;
@@ -785,6 +820,7 @@ $(call inherit-product-if-exists, vendor/{manufacturer}/{codename}/{codename}-ve
 
     copy_prebuilts(dev, &root.join("prebuilts"), false)?;
     copy_props(dev, root)?;
+    copy_vintf(root, &vintf)?;
     copy_rootdir(dev, root)?;
     fs::write(root.join("README.md"), tree_readme(dev, "AOSP/LineageOS"))?;
     Ok(())
@@ -921,6 +957,95 @@ fn model_name(meta: &DeviceMetadata) -> String {
     }
 }
 
+#[derive(Debug, Default)]
+struct VintfFiles {
+    manifest: Option<PathBuf>,
+    compatibility_matrix: Option<PathBuf>,
+    device_compatibility_matrix: Option<PathBuf>,
+}
+
+fn existing(root: &Path, candidates: &[&str]) -> Option<PathBuf> {
+    candidates
+        .iter()
+        .map(|candidate| root.join(candidate))
+        .find(|path| path.is_file())
+}
+
+fn find_vintf(dev: &DeviceContext) -> VintfFiles {
+    let root = dev.dump_root;
+    let manifest = existing(
+        root,
+        &[
+            "vendor/etc/vintf/manifest.xml",
+            "vendor/vendor/etc/vintf/manifest.xml",
+            "odm/etc/vintf/manifest.xml",
+            "odm/odm/etc/vintf/manifest.xml",
+        ],
+    );
+    let compatibility_matrix = existing(
+        root,
+        &[
+            "vendor/etc/vintf/compatibility_matrix.xml",
+            "vendor/vendor/etc/vintf/compatibility_matrix.xml",
+            "odm/etc/vintf/compatibility_matrix.xml",
+            "odm/odm/etc/vintf/compatibility_matrix.xml",
+        ],
+    );
+    let device_compatibility_matrix = existing(
+        root,
+        &[
+            "system/etc/vintf/compatibility_matrix.device.xml",
+            "system/system/etc/vintf/compatibility_matrix.device.xml",
+            "system_ext/etc/vintf/compatibility_matrix.device.xml",
+            "system_ext/system_ext/etc/vintf/compatibility_matrix.device.xml",
+        ],
+    );
+    VintfFiles {
+        manifest,
+        compatibility_matrix,
+        device_compatibility_matrix,
+    }
+}
+
+fn vintf_block(vintf: &VintfFiles) -> String {
+    let mut out = String::new();
+    out.push_str("# VINTF\n");
+    out.push_str("VINTF_PATH := $(CONFIGS_PATH)/vintf\n");
+    if vintf.manifest.is_some() {
+        out.push_str("DEVICE_MANIFEST_FILE := $(VINTF_PATH)/manifest.xml\n");
+    } else {
+        out.push_str("# NOTE: vendor/etc/vintf/manifest.xml not found\n");
+    }
+    if vintf.compatibility_matrix.is_some() {
+        out.push_str("DEVICE_MATRIX_FILE := $(VINTF_PATH)/compatibility_matrix.xml\n");
+    } else {
+        out.push_str("# NOTE: vendor/etc/vintf/compatibility_matrix.xml not found\n");
+    }
+    if vintf.device_compatibility_matrix.is_some() {
+        out.push_str(
+            "DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE := $(VINTF_PATH)/compatibility_matrix.device.xml\n",
+        );
+    } else {
+        out.push_str("# NOTE: system/etc/vintf/compatibility_matrix.device.xml not found\n");
+    }
+    out
+}
+
+fn copy_vintf(root: &Path, vintf: &VintfFiles) -> Result<()> {
+    let dest = root.join("configs/vintf");
+    util::ensure_dir(&dest)?;
+    if let Some(src) = &vintf.manifest {
+        util::copy_file(src, &dest.join("manifest.xml"))?;
+    }
+    if let Some(src) = &vintf.compatibility_matrix {
+        util::copy_file(src, &dest.join("compatibility_matrix.xml"))?;
+    }
+    if let Some(src) = &vintf.device_compatibility_matrix {
+        util::copy_file(src, &dest.join("compatibility_matrix.device.xml"))?;
+    }
+    Ok(())
+}
+
 fn prop_block(dev: &DeviceContext) -> String {
     let mut out = String::new();
     for partition in [
@@ -943,7 +1068,7 @@ fn prop_block(dev: &DeviceContext) -> String {
         ];
         if candidates.iter().any(|p| p.is_file()) {
             out.push_str(&format!(
-                "TARGET_{}_PROP += $(DEVICE_PATH)/{partition}.prop\n",
+                "TARGET_{}_PROP += $(PROPS_PATH)/{partition}.prop\n",
                 partition.to_uppercase()
             ));
         }
@@ -955,6 +1080,7 @@ fn prop_block(dev: &DeviceContext) -> String {
 }
 
 fn copy_props(dev: &DeviceContext, root: &Path) -> Result<()> {
+    util::ensure_dir(&root.join("configs/properties"))?;
     for partition in [
         "system",
         "system_ext",
@@ -974,7 +1100,12 @@ fn copy_props(dev: &DeviceContext, root: &Path) -> Result<()> {
             dev.dump_root.join(partition).join("etc").join("build.prop"),
         ];
         if let Some(src) = candidates.iter().find(|p| p.is_file()) {
-            util::copy_file(src, &root.join(format!("{partition}.prop")))?;
+            util::copy_file(
+                src,
+                &root
+                    .join("configs/properties")
+                    .join(format!("{partition}.prop")),
+            )?;
         }
     }
     Ok(())

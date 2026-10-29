@@ -15,11 +15,9 @@ pub struct ArchiveEntry {
 
 pub fn is_archive_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    [
-        ".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.md5",
-    ]
-    .iter()
-    .any(|ext| lower.ends_with(ext))
+    [".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.md5"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
 }
 
 pub fn list(archive: &Path) -> Result<Vec<ArchiveEntry>> {

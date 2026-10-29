@@ -192,24 +192,19 @@ impl Pipeline {
             }
             if lower.ends_with(".lz4") {
                 let Some(lz4) = util::find_tool("lz4") else {
-                    util::warn(format!("lz4 not found; cannot decompress {}", file.display()));
+                    util::warn(format!(
+                        "lz4 not found; cannot decompress {}",
+                        file.display()
+                    ));
                     continue;
                 };
                 let output_name = name.trim_end_matches(".lz4").to_string();
                 let output = staging.join(output_name);
                 util::info(format!("decompressing {}", file.display()));
-                util::stream_to_file(
-                    &lz4,
-                    &[OsStr::new("-dc")],
-                    &file,
-                    &output,
-                )?;
+                util::stream_to_file(&lz4, &[OsStr::new("-dc")], &file, &output)?;
                 extra.push(output);
             } else if lower.ends_with(".ext4") {
-                let output_name = format!(
-                    "{}.img",
-                    name.trim_end_matches(".ext4")
-                );
+                let output_name = format!("{}.img", name.trim_end_matches(".ext4"));
                 let output = staging.join(output_name);
                 if !output.exists() {
                     if std::fs::hard_link(&file, &output).is_err() {
@@ -1022,7 +1017,6 @@ fn kernel_version_from(out: &Path) -> Option<String> {
     None
 }
 
-
 /// Compare filenames with embedded numbers naturally (super.img.2 before
 /// super.img.10).
 fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
@@ -1051,15 +1045,13 @@ fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
                     other => return other,
                 }
             }
-            (Some(ac), Some(bc)) => {
-                match ac.cmp(&bc) {
-                    std::cmp::Ordering::Equal => {
-                        ai.next();
-                        bi.next();
-                    }
-                    other => return other,
+            (Some(ac), Some(bc)) => match ac.cmp(&bc) {
+                std::cmp::Ordering::Equal => {
+                    ai.next();
+                    bi.next();
                 }
-            }
+                other => return other,
+            },
         }
     }
 }

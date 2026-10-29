@@ -177,10 +177,21 @@ The Rust device-tree generator replaces `twrpdtgen`/`aospdtgen`. It inspects
   exits silently.
 - TWRP `recovery.fstab` is derived from the dump fstab; rootdir `*.rc` files
   and `default.prop` are copied from the available ramdisks.
+- Properties live in `configs/properties/<partition>.prop` and VINTF files in
+  `configs/vintf/{manifest.xml,compatibility_matrix.xml,compatibility_matrix.device.xml}`.
+- `BOARD_SUPER_PARTITION_SIZE` comes from the liblp metadata;
+  `BOARD_<MTK|OEM>_DYNAMIC_PARTITIONS_SIZE` is the super size minus 4 MiB,
+  and the partition list is `$(ALL_PARTITIONS)`.
+- Symlinks found in the dump are attached to their target blob instead of
+  being emitted as separate files:
+  `vendor/lib64/mt6789/libfoo.so;SYMLINK=vendor/lib64/libfoo.so`. Chains
+  and absolute Android links (`/vendor/...`, `/system/...`) are resolved, and
+  duplicate target entries are suppressed.
 
 AOSP tree output: `BoardConfig.mk`, `device.mk`, `Android.bp`,
 `Android.mk`, `AndroidProducts.mk`, `lineage_<device>.mk`, `rootdir/etc/…`,
-`prebuilts/{kernel,dtb.img,dtbo.img}` and partition `.prop` files.
+`prebuilts/{kernel,dtb.img,dtbo.img}`, `configs/properties/*.prop` and
+`configs/vintf/*.xml`.
 
 TWRP tree output: `BoardConfig.mk`, `device.mk`, `Android.bp`, `Android.mk`,
 `AndroidProducts.mk`, `omni_<device>.mk`, `recovery.fstab`, `recovery/root`,

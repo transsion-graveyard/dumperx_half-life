@@ -12,9 +12,41 @@ use std::path::{Path, PathBuf};
 pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> Result<PathBuf> {
     util::step("Generating proprietary-files.txt");
     let files = collect_files(dump_root)?;
-    let file_set: HashSet<String> = files.iter().cloned().collect();
-    let lower: Vec<String> = files.iter().map(|f| f.to_lowercase()).collect();
-    let mut sections: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let symlinks = collect_symlinks(dump_root)?;
+
+    // Map every symlink to its final target, and remember which links point
+    // at each target.  A chain A -> B -> C attaches both A and B to C.
+    let mut link_to_target: BTreeMap<String, String> = BTreeMap::new();
+    let mut target_links: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for symlink in &symlinks {
+        link_to_target.insert(symlink.link.clone(), symlink.target.clone());
+        target_links
+            .entry(symlink.target.clone())
+            .or_default()
+            .push(symlink.link.clone());
+    }
+    for links in target_links.values_mut() {
+        links.sort();
+        links.dedup();
+    }
+
+    let mut file_set: HashSet<String> = files.iter().cloned().collect();
+    for target in target_links.keys() {
+        file_set.insert(target.clone());
+    }
+
+    // A rule can match either a real file or a symlink path.  Both resolve
+    // to the blob that must be copied; symlink names are never emitted as
+    // standalone blobs.
+    let mut match_entries: Vec<(String, String)> = files
+        .iter()
+        .map(|file| (file.clone(), file.clone()))
+        .collect();
+    for symlink in &symlinks {
+        match_entries.push((symlink.link.clone(), symlink.target.clone()));
+    }
+
+    let mut sections: BTreeMap<String, Vec<BlobEntry>> = BTreeMap::new();
 
     // android_tools starts each section with a curated list from
     // helpers/lists/proprietary/, then appends the grep matches.
@@ -34,8 +66,11 @@ pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> 
                 let list = sections.entry(name).or_default();
                 for line in text.lines() {
                     let line = line.trim();
-                    if !line.is_empty() {
-                        list.push(line.to_string());
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if let Some(entry) = map_entry(line, &link_to_target, &file_set) {
+                        list.push(entry);
                     }
                 }
             }
@@ -43,12 +78,12 @@ pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> 
     }
 
     for rule in RULES {
-        for (path, lower_path) in files.iter().zip(lower.iter()) {
-            if rule_matches(rule, lower_path) {
+        for (match_path, blob_path) in &match_entries {
+            if rule_matches(rule, &match_path.to_lowercase()) {
                 sections
                     .entry(rule.section.to_string())
                     .or_default()
-                    .push(path.clone());
+                    .push(BlobEntry::new(blob_path.clone()));
             }
         }
     }
@@ -61,25 +96,19 @@ pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> 
     // sections belongs to the alphabetically first one.
     for (section, entries) in &sections {
         let mut entries = entries.clone();
-        entries.sort_by_key(|s| s.to_lowercase());
-        entries.dedup();
+        entries.sort_by_key(|entry| entry.path.to_lowercase());
+        entries.dedup_by(|a, b| a.path == b.path);
         let mut wrote_header = false;
         for entry in entries {
-            let exists = entry
-                .strip_prefix('-')
-                .map(|e| file_set.contains(e))
-                .unwrap_or_else(|| file_set.contains(&entry));
-            if !exists {
-                continue;
-            }
-            if !seen.insert(entry.clone()) {
+            let exists = file_set.contains(&entry.path);
+            if !exists || !seen.insert(entry.path.clone()) {
                 continue;
             }
             if !wrote_header {
                 out.push_str(&format!("\n# {section}\n"));
                 wrote_header = true;
             }
-            out.push_str(&format_blob(&entry));
+            out.push_str(&format_blob(&entry, &target_links));
             out.push('\n');
         }
     }
@@ -109,7 +138,7 @@ pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> 
         misc.sort();
         for path in misc {
             if seen.insert(path.clone()) {
-                out.push_str(&format_blob(&path));
+                out.push_str(&format_blob(&BlobEntry::new(path), &target_links));
                 out.push('\n');
             }
         }
@@ -118,9 +147,10 @@ pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> 
     let out_path = dump_root.join("proprietary-files.txt");
     fs::write(&out_path, out)?;
     util::info(format!(
-        "wrote {} ({} entries)",
+        "wrote {} ({} entries, {} symlink(s))",
         out_path.display(),
-        seen.len()
+        seen.len(),
+        target_links.values().map(Vec::len).sum::<usize>()
     ));
 
     // proprietary-files.sha1
@@ -133,7 +163,12 @@ pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> 
             sha1_text.push('\n');
             continue;
         }
-        let blob = line.trim_start_matches('-');
+        // `path;SYMLINK=link1,link2|sha1` hashes the target blob only.
+        let without_optional = line.trim_start_matches('-');
+        let blob = without_optional
+            .split(";SYMLINK=")
+            .next()
+            .unwrap_or(without_optional);
         if let Some(path) = sha1sum::resolve_blob(dump_root, blob) {
             if let Ok(hash) = sha1sum::sha1_file(&path) {
                 sha1_text.push_str(line);
@@ -148,6 +183,186 @@ pub fn generate(dump_root: &Path, _meta: &DeviceMetadata, description: &str) -> 
     }
     fs::write(&sha1_path, sha1_text)?;
     Ok(out_path)
+}
+
+#[derive(Debug, Clone)]
+struct BlobEntry {
+    path: String,
+    optional: bool,
+}
+
+impl BlobEntry {
+    fn new(path: String) -> Self {
+        BlobEntry {
+            path,
+            optional: false,
+        }
+    }
+}
+
+fn map_entry(
+    line: &str,
+    link_to_target: &BTreeMap<String, String>,
+    file_set: &HashSet<String>,
+) -> Option<BlobEntry> {
+    let optional = line.starts_with('-');
+    let core = line.trim_start_matches('-');
+    let core = core.split(";SYMLINK=").next().unwrap_or(core).trim();
+    if core.is_empty() {
+        return None;
+    }
+    let normalized = normalize_dump_path(core);
+    let target = link_to_target
+        .get(&normalized)
+        .cloned()
+        .unwrap_or(normalized);
+    if file_set.contains(&target) {
+        Some(BlobEntry {
+            path: target,
+            optional,
+        })
+    } else {
+        None
+    }
+}
+
+#[derive(Debug, Clone)]
+struct DumpSymlink {
+    link: String,
+    target: String,
+}
+
+fn collect_symlinks(root: &Path) -> Result<Vec<DumpSymlink>> {
+    let mut symlinks = Vec::new();
+    for entry in walkdir::WalkDir::new(root).follow_links(false) {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if !entry.file_type().is_symlink() {
+            continue;
+        }
+        let rel = entry
+            .path()
+            .strip_prefix(root)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        if skip_rel(&rel) {
+            continue;
+        }
+        let link = normalize_dump_path(&rel);
+        if link.is_empty() {
+            continue;
+        }
+        let Some(target_abs) = resolve_symlink_target(root, entry.path()) else {
+            continue;
+        };
+        let target_rel = target_abs
+            .strip_prefix(root)
+            .unwrap_or(&target_abs)
+            .to_string_lossy();
+        let target = normalize_dump_path(&target_rel);
+        if target.is_empty() || target == link {
+            continue;
+        }
+        symlinks.push(DumpSymlink { link, target });
+    }
+    symlinks.sort_by(|a, b| a.link.cmp(&b.link));
+    symlinks.dedup_by(|a, b| a.link == b.link && a.target == b.target);
+    Ok(symlinks)
+}
+
+/// Follow a symlink chain until it reaches a regular file.  Absolute
+/// Android paths (`/vendor/...`, `/system/...`) are mapped back into the
+/// dump tree; relative links are resolved against the link's directory.
+fn resolve_symlink_target(root: &Path, link_path: &Path) -> Option<PathBuf> {
+    let mut current = link_path.to_path_buf();
+    for _ in 0..16 {
+        let meta = fs::symlink_metadata(&current).ok()?;
+        if !meta.file_type().is_symlink() {
+            return if meta.is_file() { Some(current) } else { None };
+        }
+        let target = fs::read_link(&current).ok()?;
+        current = resolve_link_target(root, &current, &target)?;
+        if !current.starts_with(root) {
+            return None;
+        }
+    }
+    None
+}
+
+fn resolve_link_target(root: &Path, current: &Path, target: &Path) -> Option<PathBuf> {
+    if target.is_absolute() {
+        let stripped = target.strip_prefix("/").ok()?;
+        let mut candidates = vec![root.join(stripped)];
+        // A dump may be a full tree (vendor/...) or a single partition root
+        // (absolute /vendor/... maps to <dump>/...).  It may also contain a
+        // nested system/ directory.
+        if let Some((prefix, rest)) =
+            stripped
+                .to_string_lossy()
+                .split_once('/')
+                .filter(|(prefix, _)| {
+                    matches!(
+                        *prefix,
+                        "system" | "system_ext" | "vendor" | "odm" | "product"
+                    )
+                })
+        {
+            candidates.push(root.join(rest));
+            if prefix == "system" {
+                candidates.push(root.join("system").join("system").join(rest));
+            }
+        }
+        candidates.push(root.join("system").join(stripped));
+        candidates
+            .into_iter()
+            .find(|candidate| fs::symlink_metadata(candidate).is_ok())
+    } else {
+        let parent = current.parent()?;
+        Some(normalize_path(&parent.join(target)))
+    }
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+fn normalize_dump_path(path: &str) -> String {
+    let mut path = path.trim().replace('\\', "/");
+    while let Some(rest) = path.strip_prefix("./") {
+        path = rest.to_string();
+    }
+    if let Some(rest) = path.strip_prefix("system/system/") {
+        path = rest.to_string();
+    } else if let Some(rest) = path.strip_prefix("system/") {
+        path = rest.to_string();
+    }
+    path.trim_start_matches('/').to_string()
+}
+
+fn skip_rel(rel: &str) -> bool {
+    rel.starts_with("aosp-device-tree/")
+        || rel.starts_with("twrp-device-tree/")
+        || rel.starts_with("tmp/")
+        || rel == "all_files.txt"
+        || rel == "all_files.sha1"
+        || rel == "README.md"
+        || rel == "fstab-report.json"
+        || rel == "super-info.json"
+        || rel.starts_with("proprietary-files")
 }
 
 fn collect_files(root: &Path) -> Result<Vec<String>> {
@@ -166,27 +381,12 @@ fn collect_files(root: &Path) -> Result<Vec<String>> {
             .unwrap_or(entry.path())
             .to_string_lossy()
             .replace('\\', "/");
-        if rel.starts_with("aosp-device-tree/")
-            || rel.starts_with("twrp-device-tree/")
-            || rel.starts_with("tmp/")
-            || rel == "all_files.txt"
-            || rel == "all_files.sha1"
-            || rel == "README.md"
-            || rel == "fstab-report.json"
-            || rel == "super-info.json"
-            || rel.starts_with("proprietary-files")
-        {
+        if skip_rel(&rel) {
             continue;
         }
         // The original script maps system/system/... to ... and system/...
         // to ... so that paths in the output are partition-relative.
-        let normalized = if let Some(rest) = rel.strip_prefix("system/system/") {
-            rest.to_string()
-        } else if let Some(rest) = rel.strip_prefix("system/") {
-            rest.to_string()
-        } else {
-            rel.clone()
-        };
+        let normalized = normalize_dump_path(&rel);
         if normalized.starts_with("vendor/bin/") && normalized.ends_with(".sh") {
             continue;
         }
@@ -218,17 +418,25 @@ fn read_list(name: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn format_blob(path: &str) -> String {
-    let lower = path.to_lowercase();
-    let prefixed = lower.contains("libplatformconfig")
+fn format_blob(entry: &BlobEntry, target_links: &BTreeMap<String, Vec<String>>) -> String {
+    let lower = entry.path.to_lowercase();
+    let prefixed = entry.optional
+        || lower.contains("libplatformconfig")
         || lower.contains("apk")
         || lower.contains("jar")
         || lower.contains("etc/vintf/manifest/");
+    let mut out = String::new();
     if prefixed {
-        format!("-{path}")
-    } else {
-        path.to_string()
+        out.push('-');
     }
+    out.push_str(&entry.path);
+    if let Some(links) = target_links.get(&entry.path) {
+        if !links.is_empty() {
+            out.push_str(";SYMLINK=");
+            out.push_str(&links.join(","));
+        }
+    }
+    out
 }
 
 fn rule_matches(rule: &Rule, lower_path: &str) -> bool {
@@ -306,6 +514,52 @@ mod tests {
         assert!(pat_match("libfoo|libbar", "vendor/lib64/libbar.so"));
         assert!(!pat_match("libfoo|libbar", "vendor/lib64/libbaz.so"));
         assert!(pat_match(".*\\.so$", "vendor/lib64/libbaz.so"));
+    }
+
+    #[test]
+    fn emits_symlinks_once_on_the_target_blob() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(".work/test-proprietary-symlinks");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("vendor/lib64/mt6789")).unwrap();
+        std::fs::create_dir_all(dir.join("vendor/bin")).unwrap();
+        std::fs::write(dir.join("vendor/lib64/mt6789/libfoo.so"), b"foo").unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink("mt6789/libfoo.so", dir.join("vendor/lib64/libfoo.so"))
+                .unwrap();
+            std::os::unix::fs::symlink(
+                "/vendor/lib64/mt6789/libfoo.so",
+                dir.join("vendor/bin/foo"),
+            )
+            .unwrap();
+        }
+        let meta = crate::props::extract_metadata(&crate::props::PropStore::default(), None);
+        generate(&dir, &meta, "test").unwrap();
+        let text = std::fs::read_to_string(dir.join("proprietary-files.txt")).unwrap();
+        assert!(text.contains(
+            "vendor/lib64/mt6789/libfoo.so;SYMLINK=vendor/bin/foo,vendor/lib64/libfoo.so"
+        ));
+        assert!(!text.lines().any(|line| line == "vendor/lib64/libfoo.so"));
+        assert!(!text.lines().any(|line| line == "vendor/bin/foo"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolves_absolute_system_symlinks_in_nested_and_root_layouts() {
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".work/test-system-symlinks");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("system/system/bin")).unwrap();
+        std::fs::write(dir.join("system/system/bin/tool"), b"x").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("/system/bin/tool", dir.join("system/system/bin/tool_alias"))
+            .unwrap();
+        let links = collect_symlinks(&dir).unwrap();
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].link, "bin/tool_alias");
+        assert_eq!(links[0].target, "bin/tool");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

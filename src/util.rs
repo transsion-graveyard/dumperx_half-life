@@ -324,19 +324,12 @@ pub fn link_tree(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-
 /// Run a decompressor with a file as stdin and write its stdout directly to
 /// `output`.  Avoids buffering multi-gigabyte images in memory.
-pub fn stream_to_file(
-    program: &Path,
-    args: &[&OsStr],
-    input: &Path,
-    output: &Path,
-) -> Result<()> {
-    let stdin = fs::File::open(input)
-        .with_context(|| format!("opening {}", input.display()))?;
-    let stdout = fs::File::create(output)
-        .with_context(|| format!("creating {}", output.display()))?;
+pub fn stream_to_file(program: &Path, args: &[&OsStr], input: &Path, output: &Path) -> Result<()> {
+    let stdin = fs::File::open(input).with_context(|| format!("opening {}", input.display()))?;
+    let stdout =
+        fs::File::create(output).with_context(|| format!("creating {}", output.display()))?;
     let status = Command::new(program)
         .args(args)
         .stdin(Stdio::from(stdin))
