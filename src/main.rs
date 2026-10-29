@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 mod archive;
+mod avb;
 mod bootimg;
 mod cpio;
 mod device_tree;

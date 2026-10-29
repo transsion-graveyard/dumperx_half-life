@@ -142,6 +142,7 @@ out/
 ├── proprietary-files.txt
 ├── proprietary-files.sha1
 ├── ikconfig                    # when the kernel embeds CONFIG_IKCONFIG
+├── avb-info.txt                # when vbmeta*.img images are present
 ├── boot/raw/...                # kernel, ramdisk, dtb, bootconfig
 ├── vendor_boot/ramdisk/<fragment>
 ├── init_boot/ramdisk
@@ -188,6 +189,9 @@ The Rust device-tree generator replaces `twrpdtgen`/`aospdtgen`. It inspects
   and `default.prop` are copied from the available ramdisks.
 - Properties live in `configs/properties/<partition>.prop` and VINTF files in
   `configs/vintf/{manifest.xml,compatibility_matrix.xml,compatibility_matrix.device.xml}`.
+- `vbmeta*.img` images (with or without `_a`/`_b` slot suffixes) are parsed
+  into `avb-info.txt`, matching `avbtool info_image` output. No file is
+  written when no vbmeta image is present.
 - `BOARD_SUPER_PARTITION_SIZE` comes from the liblp metadata;
   `BOARD_<MTK|OEM>_DYNAMIC_PARTITIONS_SIZE` is the super size minus 4 MiB,
   and the partition list is `$(ALL_PARTITIONS)`.
@@ -246,6 +250,7 @@ Native Rust:
 | proprietary-files | `proprietary.rs` + generated rules |
 | SHA-1 manifests | `sha1sum.rs` |
 | fstab | `fstab.rs` |
+| AVB vbmeta info | `avb.rs` (native `avbtool info_image` equivalent) |
 | device trees | `device_tree.rs` |
 
 ## Legacy bridge

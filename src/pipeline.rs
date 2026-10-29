@@ -1,6 +1,7 @@
 //! End-to-end firmware dump pipeline.
 
 use crate::archive;
+use crate::avb;
 use crate::bootimg::{self, BootImage};
 use crate::device_tree::{self, DeviceTreeOptions};
 use crate::fsimage::{self, FsType};
@@ -429,8 +430,20 @@ impl Pipeline {
             if super_files.iter().any(|p| p == file) {
                 continue;
             }
-            // Skip files that were already imported into out.
-            let dest = self.opts.out.join(format!("{base}.img"));
+            // Skip files that were already imported into out.  vbmeta
+            // images keep their slot suffix (vbmeta_a.img etc.) so the AVB
+            // report can distinguish both slots.
+            let original_name = file
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            let is_vbmeta = avb::is_vbmeta_file(&original_name);
+            let dest = if is_vbmeta {
+                self.opts.out.join(&original_name)
+            } else {
+                self.opts.out.join(format!("{base}.img"))
+            };
             if file != &dest {
                 if dest.exists() {
                     continue;
@@ -782,7 +795,15 @@ impl Pipeline {
         images.sort();
         for image in images {
             let name = util::base_partition(&util::stem(&image)).to_string();
-            if KEEP_IMAGES.contains(&name.as_str()) || name == "super" {
+            let file_name = image
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_ascii_lowercase();
+            if file_name.starts_with("vbmeta")
+                || KEEP_IMAGES.contains(&name.as_str())
+                || name == "super"
+            {
                 continue;
             }
             let head = util::read_head(&image, 8).unwrap_or_default();
@@ -957,6 +978,10 @@ impl Pipeline {
 
         let meta = self.write_metadata()?;
         proprietary::generate(&self.opts.out, &meta, &meta.description)?;
+
+        if avb::write_info(&self.opts.out)?.is_none() {
+            util::info("no vbmeta images found; avb-info.txt not generated");
+        }
 
         if self.opts.device_tree {
             util::step("Generating device trees");

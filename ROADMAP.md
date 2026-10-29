@@ -16,6 +16,7 @@
 - [x] Native `payload.bin` parser (REPLACE/BZ/XZ/ZSTD/ZERO/DISCARD).
 - [x] Native `UPDATE.APP` extractor.
 - [x] Native Spreadtrum `.pac` extractor.
+- [x] Native AVB vbmeta info (`avb-info.txt`).
 - [x] Native proprietary-files classifier (validated against android_tools).
 - [x] Native SHA-1 manifests.
 - [x] Native TWRP/AOSP device-tree generation with multi-image selection.
