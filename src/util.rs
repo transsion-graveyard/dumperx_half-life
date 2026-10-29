@@ -8,9 +8,33 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 pub fn project_dir() -> PathBuf {
-    std::env::var_os("DUMPRX_PROJECT_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+    if let Some(dir) = std::env::var_os("DUMPRX_PROJECT_DIR") {
+        return PathBuf::from(dir);
+    }
+
+    // Prefer the directory layout around the binary so a release tarball
+    // containing `dumprx` plus `utils/` works after being moved anywhere.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(bin_dir) = exe.parent() {
+            let candidates = [
+                Some(bin_dir.to_path_buf()),
+                bin_dir.parent().map(Path::to_path_buf),
+                bin_dir
+                    .parent()
+                    .and_then(Path::parent)
+                    .map(Path::to_path_buf),
+            ];
+            for candidate in candidates.into_iter().flatten() {
+                if candidate.join("utils").is_dir() {
+                    return candidate;
+                }
+            }
+        }
+    }
+
+    // Development fallback when the binary is run from a build directory
+    // outside the expected target/{debug,release} layout.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 pub fn utils_dir() -> PathBuf {
