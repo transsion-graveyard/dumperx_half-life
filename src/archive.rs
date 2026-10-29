@@ -16,8 +16,7 @@ pub struct ArchiveEntry {
 pub fn is_archive_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     [
-        ".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.md5", ".gz", ".xz", ".bz2", ".lz4",
-        ".zst", ".br",
+        ".zip", ".rar", ".7z", ".tar", ".tar.gz", ".tgz", ".tar.md5",
     ]
     .iter()
     .any(|ext| lower.ends_with(ext))

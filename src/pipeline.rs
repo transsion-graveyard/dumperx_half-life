@@ -161,6 +161,47 @@ impl Pipeline {
         Ok(staging.to_path_buf())
     }
 
+    /// Decompress Samsung-style `.lz4` images and rename `.ext4` images so
+    /// the normal image handling sees them.  Outputs go to the staging
+    /// directory, never to the user's input tree.
+    fn preprocess_compressed(&self, files: &mut Vec<PathBuf>, staging: &Path) -> Result<()> {
+        let mut extra = Vec::new();
+        for file in files.clone() {
+            let name = file.file_name().unwrap_or_default().to_string_lossy();
+            let lower = name.to_ascii_lowercase();
+            if lower.ends_with(".lz4") {
+                let Some(lz4) = util::find_tool("lz4") else {
+                    util::warn(format!("lz4 not found; cannot decompress {}", file.display()));
+                    continue;
+                };
+                let output_name = name.trim_end_matches(".lz4").to_string();
+                let output = staging.join(output_name);
+                util::info(format!("decompressing {}", file.display()));
+                util::stream_to_file(
+                    &lz4,
+                    &[OsStr::new("-dc")],
+                    &file,
+                    &output,
+                )?;
+                extra.push(output);
+            } else if lower.ends_with(".ext4") {
+                let output_name = format!(
+                    "{}.img",
+                    name.trim_end_matches(".ext4")
+                );
+                let output = staging.join(output_name);
+                if !output.exists() {
+                    if std::fs::hard_link(&file, &output).is_err() {
+                        util::copy_file(&file, &output)?;
+                    }
+                }
+                extra.push(output);
+            }
+        }
+        files.extend(extra);
+        Ok(())
+    }
+
     /// If the input is an already-extracted dump, mirror its partition
     /// directories into the output root with hard links so metadata, fstab
     /// and proprietary-files generation work without re-extracting images.
@@ -223,7 +264,9 @@ impl Pipeline {
                 files.push(entry.path().to_path_buf());
             }
         }
+        self.preprocess_compressed(&mut files, staging)?;
         files.sort();
+        files.dedup();
 
         // Super images first: their partitions feed the rest of the stages.
         let super_files: Vec<PathBuf> = files
