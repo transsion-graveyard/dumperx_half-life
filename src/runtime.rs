@@ -36,9 +36,7 @@ pub fn ensure() -> Result<PathBuf> {
         return Ok(dir);
     }
 
-    let cache = cache_root();
-    fs::create_dir_all(&cache)
-        .with_context(|| format!("creating runtime cache {}", cache.display()))?;
+    let cache = prepare_cache()?;
     let mut hasher = Sha1::new();
     hasher.update(RUNTIME_ARCHIVE);
     let digest = format!("{:x}", hasher.finalize());
@@ -74,6 +72,31 @@ fn cache_root() -> PathBuf {
         return PathBuf::from(home).join(".cache").join("dumprx");
     }
     std::env::temp_dir().join("dumprx-cache")
+}
+
+/// Pick the first writable cache location.  A read-only HOME should not stop
+/// the standalone binary from running; fall back to the temporary directory.
+fn prepare_cache() -> Result<PathBuf> {
+    let candidates = [cache_root(), std::env::temp_dir().join("dumprx-cache")];
+    let mut errors = Vec::new();
+    for candidate in candidates {
+        if let Err(e) = fs::create_dir_all(&candidate) {
+            errors.push(format!("{}: {e}", candidate.display()));
+            continue;
+        }
+        let probe = candidate.join(".write-test");
+        match fs::write(&probe, b"ok") {
+            Ok(()) => {
+                let _ = fs::remove_file(&probe);
+                return Ok(candidate);
+            }
+            Err(e) => errors.push(format!("{}: {e}", candidate.display())),
+        }
+    }
+    bail!(
+        "no writable runtime cache directory (tried {})",
+        errors.join(", ")
+    )
 }
 
 fn extract(dest: &Path) -> Result<()> {
