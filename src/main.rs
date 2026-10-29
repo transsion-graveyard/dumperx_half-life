@@ -4,10 +4,21 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+mod archive;
 mod bootimg;
+mod cpio;
+mod fsimage;
 mod fstab;
+mod ikconfig;
+mod payload;
+mod pipeline;
+mod props;
+mod ramdisk;
+mod sdat;
+mod sha1sum;
 mod sparse;
 mod superimg;
+mod util;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -24,6 +35,32 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Dump a firmware file, archive or already-extracted directory
+    Dump {
+        /// Firmware file, archive or extracted dump directory
+        input: PathBuf,
+        /// Output directory
+        #[arg(short, long, default_value = "out")]
+        out: PathBuf,
+        /// Keep partition images after extracting their filesystems
+        #[arg(long)]
+        keep_images: bool,
+        /// Do not generate device trees
+        #[arg(long)]
+        no_device_tree: bool,
+        /// Generate a TWRP device tree
+        #[arg(long)]
+        twrp: bool,
+        /// Generate an AOSP/LineageOS device tree
+        #[arg(long)]
+        aosp: bool,
+        /// Only extract these super partitions (repeatable)
+        #[arg(long = "partition", short = 'p')]
+        partitions: Vec<String>,
+        /// Verbose command logging
+        #[arg(short, long)]
+        verbose: bool,
+    },
     /// Print boot/vendor_boot image info (supports header v0 through v4)
     Info {
         /// Path to boot.img / vendor_boot.img
@@ -83,6 +120,31 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Commands::Dump {
+            input,
+            out,
+            keep_images,
+            no_device_tree,
+            twrp,
+            aosp,
+            partitions,
+            verbose,
+        } => {
+            let opts = pipeline::DumpOptions {
+                input,
+                out,
+                keep_images,
+                verbose,
+                device_tree: !no_device_tree,
+                twrp,
+                aosp,
+                jobs: std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4),
+                partitions,
+            };
+            pipeline::Pipeline::new(opts)?.run()?;
+        }
         Commands::Info { image } => {
             let img = bootimg::BootImage::parse(&image)?;
             print!("{}", img.info());
