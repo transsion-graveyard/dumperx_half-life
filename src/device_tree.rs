@@ -99,6 +99,7 @@ pub fn generate(dump_root: &Path, opts: &DeviceTreeOptions) -> Result<()> {
         manufacturer: &manufacturer,
         codename: &codename,
         detected_codename: &detected_codename,
+        props: &props,
         fstab,
         fstab_set: &fstab_set,
         images: &images,
@@ -128,6 +129,7 @@ struct DeviceContext<'a> {
     manufacturer: &'a str,
     codename: &'a str,
     detected_codename: &'a str,
+    props: &'a PropStore,
     fstab: Option<&'a FstabFile>,
     fstab_set: &'a FstabSet,
     images: &'a SelectedImages,
@@ -398,11 +400,59 @@ fn select_images(dump_root: &Path, fstab_set: &FstabSet) -> Result<SelectedImage
     Ok(out)
 }
 
-fn arch_block(meta: &DeviceMetadata) -> String {
+fn get_prop(dev: &DeviceContext, key: &str) -> Option<String> {
+    // Follow aospdtgen's BuildProp import order: later partitions override
+    // earlier ones.  This matters for props such as ro.product.board.
+    const ORDER: &[&str] = &[
+        "system/build*.prop",
+        "system/system/build*.prop",
+        "vendor/build*.prop",
+        "product/build*.prop",
+        "system_ext/build*.prop",
+        "system_dlkm/build*.prop",
+        "odm/etc/build*.prop",
+        "odm_dlkm/etc/build*.prop",
+        "vendor_dlkm/etc/build*.prop",
+    ];
+    let mut found = None;
+    for pattern in ORDER {
+        let expanded = crate::props::wildcard_match;
+        for file in &dev.props.files {
+            let rel = file.path.to_string_lossy();
+            if !expanded(pattern, &rel) {
+                continue;
+            }
+            for (name, value) in &file.props {
+                if name == key && !value.is_empty() {
+                    found = Some(value.clone());
+                }
+            }
+        }
+    }
+    if found.is_some() {
+        return found;
+    }
+    for file in &dev.props.files {
+        for (name, value) in &file.props {
+            if name == key && !value.is_empty() {
+                found = Some(value.clone());
+            }
+        }
+    }
+    found
+}
+
+fn prop_true(dev: &DeviceContext, key: &str) -> bool {
+    get_prop(dev, key)
+        .map(|value| matches!(value.trim().to_lowercase().as_str(), "true" | "1" | "yes"))
+        .unwrap_or(false)
+}
+
+fn arch_block(meta: &DeviceMetadata, cpu_variant: &str) -> String {
     let abilist = &meta.abilist;
     let mut out = String::new();
     if abilist.contains("arm64-v8a") || abilist.is_empty() {
-        out.push_str(
+        out.push_str(&format!(
             "\
 # Architecture
 TARGET_ARCH := arm64
@@ -410,9 +460,9 @@ TARGET_ARCH_VARIANT := armv8-a
 TARGET_CPU_ABI := arm64-v8a
 TARGET_CPU_ABI2 :=
 TARGET_CPU_VARIANT := generic
-TARGET_CPU_VARIANT_RUNTIME := generic
-",
-        );
+TARGET_CPU_VARIANT_RUNTIME := {cpu_variant}
+"
+        ));
         if abilist.contains("armeabi-v7a") {
             out.push_str(
                 "\
@@ -426,7 +476,7 @@ TARGET_2ND_CPU_VARIANT_RUNTIME := generic
             );
         }
     } else if abilist.contains("x86_64") {
-        out.push_str(
+        out.push_str(&format!(
             "\
 # Architecture
 TARGET_ARCH := x86_64
@@ -434,11 +484,11 @@ TARGET_ARCH_VARIANT := x86_64
 TARGET_CPU_ABI := x86_64
 TARGET_CPU_ABI2 :=
 TARGET_CPU_VARIANT := generic
-TARGET_CPU_VARIANT_RUNTIME := generic
-",
-        );
+TARGET_CPU_VARIANT_RUNTIME := {cpu_variant}
+"
+        ));
     } else {
-        out.push_str(
+        out.push_str(&format!(
             "\
 # Architecture
 TARGET_ARCH := arm
@@ -446,9 +496,9 @@ TARGET_ARCH_VARIANT := armv7-a-neon
 TARGET_CPU_ABI := armeabi-v7a
 TARGET_CPU_ABI2 := armeabi
 TARGET_CPU_VARIANT := generic
-TARGET_CPU_VARIANT_RUNTIME := generic
-",
-        );
+TARGET_CPU_VARIANT_RUNTIME := {cpu_variant}
+"
+        ));
     }
     out
 }
@@ -541,6 +591,9 @@ fn partition_block(dev: &DeviceContext, twrp: bool) -> String {
     let img = dev.images;
     let mut out = String::new();
     out.push_str("# Partitions\n");
+    if prop_true(dev, "ro.build.system_root_image") {
+        out.push_str("BOARD_BUILD_SYSTEM_ROOT_IMAGE := true\n");
+    }
     if img.pagesize != 0 {
         out.push_str(&format!(
             "BOARD_FLASH_BLOCK_SIZE := {} # (BOARD_KERNEL_PAGESIZE * 64)\n",
@@ -672,10 +725,35 @@ fn recovery_block(dev: &DeviceContext, twrp: bool) -> String {
     } else {
         out.push_str("# NOTE: no fstab found; TARGET_RECOVERY_FSTAB not set\n");
     }
+    if dev.images.dtbo_size > 0 && dev.meta.is_ab != "true" {
+        out.push_str("BOARD_INCLUDE_RECOVERY_DTBO := true\n");
+    }
+    if let Some(pixel_format) = get_prop(dev, "ro.minui.pixel_format") {
+        out.push_str(&format!("TARGET_RECOVERY_PIXEL_FORMAT := {pixel_format}\n"));
+    }
     out.push_str("TARGET_USERIMAGES_USE_EXT4 := true\n");
     out.push_str("TARGET_USERIMAGES_USE_F2FS := true\n");
-    if dev.meta.density != "undefined" && !dev.meta.density.is_empty() {
+    if twrp && dev.meta.density != "undefined" && !dev.meta.density.is_empty() {
         out.push_str(&format!("TARGET_SCREEN_DENSITY := {}\n", dev.meta.density));
+    }
+    if !twrp {
+        if let Some(patch) = get_prop(dev, "ro.vendor.build.security_patch") {
+            out.push_str(&format!(
+                "\n# Security patch level\nVENDOR_SECURITY_PATCH := {patch}\n"
+            ));
+        }
+        if has_vbmeta(dev) {
+            out.push_str("\n# Verified Boot\nBOARD_AVB_ENABLE := true\nBOARD_AVB_MAKE_VBMETA_IMAGE_ARGS += --flags 3\n");
+            if dev.images.recovery_size > 0 {
+                out.push_str("BOARD_AVB_RECOVERY_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem\nBOARD_AVB_RECOVERY_ALGORITHM := SHA256_RSA4096\nBOARD_AVB_RECOVERY_ROLLBACK_INDEX := 1\nBOARD_AVB_RECOVERY_ROLLBACK_INDEX_LOCATION := 1\n");
+            }
+            if dev.images.vendor_boot_size > 0 {
+                out.push_str("BOARD_AVB_VENDOR_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem\nBOARD_AVB_VENDOR_BOOT_ALGORITHM := SHA256_RSA4096\nBOARD_AVB_VENDOR_BOOT_ROLLBACK_INDEX := 1\nBOARD_AVB_VENDOR_BOOT_ROLLBACK_INDEX_LOCATION := 1\n");
+            }
+            if dev.images.vendor_kernel_boot_size > 0 {
+                out.push_str("BOARD_AVB_VENDOR_KERNEL_BOOT_KEY_PATH := external/avb/test/data/testkey_rsa4096.pem\nBOARD_AVB_VENDOR_KERNEL_BOOT_ALGORITHM := SHA256_RSA4096\nBOARD_AVB_VENDOR_KERNEL_BOOT_ROLLBACK_INDEX := 1\nBOARD_AVB_VENDOR_KERNEL_BOOT_ROLLBACK_INDEX_LOCATION := 1\n");
+            }
+        }
     }
     if twrp {
         out.push_str("TW_THEME := portrait_hdpi\n");
@@ -690,6 +768,294 @@ fn recovery_block(dev: &DeviceContext, twrp: bool) -> String {
     out
 }
 
+fn fstab_entry<'a>(dev: &'a DeviceContext, mount: &str) -> Option<&'a FstabEntry> {
+    let fstab = dev.fstab?;
+    fstab
+        .entries
+        .iter()
+        .find(|entry| entry.mount_point == mount && entry.has_fs_mgr_flag("slotselect"))
+        .or_else(|| {
+            fstab
+                .entries
+                .iter()
+                .find(|entry| entry.mount_point == mount)
+        })
+}
+
+fn ab_partitions(dev: &DeviceContext) -> Vec<String> {
+    const ORDER: &[&str] = &[
+        "boot",
+        "dtbo",
+        "init_boot",
+        "recovery",
+        "system",
+        "system_dlkm",
+        "system_ext",
+        "product",
+        "vendor",
+        "vendor_boot",
+        "vendor_dlkm",
+        "odm",
+        "odm_dlkm",
+        "vbmeta",
+        "vbmeta_system",
+        "vbmeta_vendor",
+    ];
+    let mut found = std::collections::HashSet::new();
+    if let Some(fstab) = dev.fstab {
+        for entry in &fstab.entries {
+            if !entry.has_fs_mgr_flag("slotselect") {
+                continue;
+            }
+            let mount = entry.mount_point.trim_matches('/');
+            let name = match mount {
+                "system_root" => "system",
+                other => other,
+            };
+            if ORDER.contains(&name) {
+                found.insert(name.to_string());
+            }
+        }
+    }
+    let mut out: Vec<String> = ORDER
+        .iter()
+        .filter(|name| found.contains(**name))
+        .map(|name| (*name).to_string())
+        .collect();
+    if out.is_empty() {
+        out = dev.images.dynamic_partitions.clone();
+    }
+    out
+}
+
+fn has_vbmeta(dev: &DeviceContext) -> bool {
+    dev.dump_root.join("avb-info.txt").is_file()
+        || crate::avb::find_vbmeta_images(dev.dump_root)
+            .map(|images| !images.is_empty())
+            .unwrap_or(false)
+}
+
+fn aosp_board(dev: &DeviceContext, vintf: &VintfFiles) -> String {
+    let mut out = String::from(
+        "# SPDX-FileCopyrightText: The LineageOS Project\n# SPDX-License-Identifier: Apache-2.0\n\n",
+    );
+    out.push_str(&format!(
+        "DEVICE_PATH := device/{}/{}\nCONFIGS_PATH := $(DEVICE_PATH)/configs\n\n",
+        dev.manufacturer, dev.codename
+    ));
+
+    if dev.meta.is_ab == "true" {
+        out.push_str("# A/B\nAB_OTA_UPDATER := true\nAB_OTA_PARTITIONS += \\\n");
+        let parts = ab_partitions(dev);
+        for (index, part) in parts.iter().enumerate() {
+            if index + 1 == parts.len() {
+                out.push_str(&format!("    {part}\n"));
+            } else {
+                out.push_str(&format!("    {part} \\\n"));
+            }
+        }
+        out.push_str("\nBOARD_USES_RECOVERY_AS_BOOT := true\n\n");
+    }
+
+    out.push_str(&arch_block(
+        dev.meta,
+        &get_prop(dev, "ro.bionic.cpu_variant").unwrap_or_else(|| "generic".to_string()),
+    ));
+    if !prop_true(dev, "ro.apex.updatable") {
+        out.push_str("# APEX\nOVERRIDE_TARGET_FLATTEN_APEX := true\n\n");
+    }
+
+    out.push_str("# Bootloader\n");
+    out.push_str(&format!(
+        "TARGET_BOOTLOADER_BOARD_NAME := {}\n",
+        get_prop(dev, "ro.product.board").unwrap_or_else(|| board_name(dev.meta))
+    ));
+    out.push_str("TARGET_NO_BOOTLOADER := true\n\n");
+
+    let density = if dev.meta.density != "undefined" && !dev.meta.density.is_empty() {
+        Some(dev.meta.density.clone())
+    } else {
+        None
+    };
+    let vulkan = prop_true(dev, "ro.hwui.use_vulkan");
+    if density.is_some() || vulkan {
+        out.push_str("# Display\n");
+        if let Some(density) = density {
+            out.push_str(&format!("TARGET_SCREEN_DENSITY := {density}\n"));
+        }
+        if vulkan {
+            out.push_str("TARGET_USES_VULKAN := true\n");
+        }
+        out.push('\n');
+    }
+
+    out.push_str(&kernel_block(dev, false));
+    out.push_str(&partition_block(dev, false));
+    out.push_str(&format!(
+        "# Platform\nTARGET_BOARD_PLATFORM := {}\n\n",
+        dev.meta.platform
+    ));
+    out.push_str("# Properties\nPROPS_PATH := $(CONFIGS_PATH)/properties\n");
+    out.push_str(&prop_block(dev));
+    out.push('\n');
+    out.push_str(&vintf_block(vintf));
+    out.push('\n');
+    out.push_str(&recovery_block(dev, false));
+    out.push_str("\n# Inherit the proprietary files\n");
+    out.push_str(&format!(
+        "include vendor/{}/{}/BoardConfigVendor.mk\n",
+        dev.manufacturer, dev.codename
+    ));
+    out
+}
+
+fn device_mk(dev: &DeviceContext) -> Result<String> {
+    let lists = collect_rootdir_lists(dev)?;
+    let fstab_name = dev
+        .fstab
+        .and_then(|f| f.path.file_name().map(|n| n.to_string_lossy().into_owned()));
+    let mut out = String::from(
+        "# SPDX-FileCopyrightText: The LineageOS Project\n# SPDX-License-Identifier: Apache-2.0\n\n",
+    );
+    out.push_str(&format!(
+        "LOCAL_PATH := device/{}/{}\n\n",
+        dev.manufacturer, dev.codename
+    ));
+
+    if prop_true(dev, "ro.apex.updatable") {
+        out.push_str(
+            "# Enable updating of APEXes\n$(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)\n\n",
+        );
+    }
+
+    let is_ab = dev.meta.is_ab == "true";
+    let virtual_ab = prop_true(dev, "ro.virtual_ab.enabled");
+    if is_ab {
+        out.push_str("# A/B\n");
+        if virtual_ab {
+            out.push_str(
+                "$(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)\n\n",
+            );
+        }
+        out.push_str(
+            "PRODUCT_PACKAGES += \\\n    android.hardware.boot@1.2-impl \\\n    android.hardware.boot@1.2-impl.recovery \\\n    android.hardware.boot@1.2-service\n\n",
+        );
+        out.push_str(
+            "PRODUCT_PACKAGES += \\\n    update_engine \\\n    update_engine_sideload \\\n    update_verifier\n\n",
+        );
+        if let Some(system) = fstab_entry(dev, "/system") {
+            if system.has_fs_mgr_flag("slotselect") {
+                out.push_str(&format!(
+                    "AB_OTA_POSTINSTALL_CONFIG += \\\n    RUN_POSTINSTALL_system=true \\\n    POSTINSTALL_PATH_system=system/bin/otapreopt_script \\\n    FILESYSTEM_TYPE_system={} \\\n    POSTINSTALL_OPTIONAL_system=true\n\n",
+                    system.fs_type
+                ));
+            }
+        }
+        if let Some(vendor) = fstab_entry(dev, "/vendor") {
+            if vendor.has_fs_mgr_flag("slotselect") {
+                out.push_str(&format!(
+                    "AB_OTA_POSTINSTALL_CONFIG += \\\n    RUN_POSTINSTALL_vendor=true \\\n    POSTINSTALL_PATH_vendor=bin/checkpoint_gc \\\n    FILESYSTEM_TYPE_vendor={} \\\n    POSTINSTALL_OPTIONAL_vendor=true\n\n",
+                    vendor.fs_type
+                ));
+            }
+        }
+        out.push_str("PRODUCT_PACKAGES += \\\n    checkpoint_gc \\\n    otapreopt_script\n\n");
+    }
+
+    let board_api = get_prop(dev, "ro.board.api_level");
+    let first_api = get_prop(dev, "ro.product.first_api_level");
+    if board_api.is_some() || first_api.is_some() {
+        out.push_str("# API levels\n");
+        if let Some(level) = board_api {
+            out.push_str(&format!("BOARD_SHIPPING_API_LEVEL := {level}\n"));
+        }
+        if let Some(level) = first_api {
+            out.push_str(&format!("PRODUCT_SHIPPING_API_LEVEL := {level}\n"));
+        }
+        out.push('\n');
+    }
+
+    let dynamic =
+        prop_true(dev, "ro.boot.dynamic_partitions") || !dev.images.dynamic_partitions.is_empty();
+    if dynamic {
+        out.push_str(
+            "# fastbootd\nPRODUCT_PACKAGES += \\\n    android.hardware.fastboot@1.1-impl-mock \\\n    fastbootd\n\n",
+        );
+    }
+
+    out.push_str("# Health\nPRODUCT_PACKAGES += \\\n    android.hardware.health@2.1-impl \\\n");
+    if !is_ab {
+        out.push_str("    android.hardware.health@2.1-impl.recovery \\\n");
+    }
+    out.push_str("    android.hardware.health@2.1-service\n\n");
+
+    if let Some(uffd) = get_prop(dev, "ro.dalvik.vm.enable_uffd_gc") {
+        let value = matches!(uffd.trim().to_lowercase().as_str(), "true" | "1" | "yes");
+        out.push_str(&format!(
+            "# Kernel\nPRODUCT_ENABLE_UFFD_GC := {}\n\n",
+            if value { "true" } else { "false" }
+        ));
+    }
+
+    out.push_str("# Overlays\nPRODUCT_ENFORCE_RRO_TARGETS := *\n\n");
+    if dynamic {
+        out.push_str("# Partitions\nPRODUCT_USE_DYNAMIC_PARTITIONS := true\n\n");
+    }
+    if let Some(characteristics) = get_prop(dev, "ro.build.characteristics") {
+        if !characteristics.trim().is_empty() {
+            out.push_str(&format!(
+                "# Product characteristics\nPRODUCT_CHARACTERISTICS := {}\n\n",
+                characteristics.trim()
+            ));
+        }
+    }
+
+    out.push_str("# Rootdir\n");
+    if !lists.bin.is_empty() {
+        out.push_str("PRODUCT_PACKAGES += \\\n");
+        for (name, _) in &lists.bin {
+            out.push_str(&format!("    {name} \\\n"));
+        }
+        out.push('\n');
+    }
+    if fstab_name.is_some() || !lists.etc.is_empty() || !lists.recovery.is_empty() {
+        out.push_str("PRODUCT_PACKAGES += \\\n");
+        if let Some(fstab) = &fstab_name {
+            out.push_str(&format!("    {fstab} \\\n"));
+        }
+        for (name, _) in &lists.etc {
+            out.push_str(&format!("    {name} \\\n"));
+        }
+        for (name, _) in &lists.recovery {
+            out.push_str(&format!("    {name} \\\n"));
+        }
+        out.push('\n');
+    }
+
+    if dynamic {
+        out.push_str("PRODUCT_COPY_FILES += \\\n");
+        if let Some(fstab) = &fstab_name {
+            if virtual_ab {
+                out.push_str(&format!(
+                    "    $(LOCAL_PATH)/rootdir/etc/{fstab}:$(TARGET_VENDOR_RAMDISK_OUT)/first_stage_ramdisk/{fstab}\n\n"
+                ));
+            } else {
+                out.push_str(&format!(
+                    "    $(LOCAL_PATH)/rootdir/etc/{fstab}:$(TARGET_COPY_OUT_RAMDISK)/{fstab}\n\n"
+                ));
+            }
+        }
+    }
+
+    out.push_str("# Soong namespaces\nPRODUCT_SOONG_NAMESPACES += \\\n    $(LOCAL_PATH)\n\n");
+    out.push_str("# Inherit the proprietary files\n");
+    out.push_str(&format!(
+        "$(call inherit-product, vendor/{}/{}/{}-vendor.mk)\n",
+        dev.manufacturer, dev.codename, dev.codename
+    ));
+    Ok(out)
+}
+
 fn generate_aosp(root: &Path, dev: &DeviceContext) -> Result<()> {
     fs::create_dir_all(root)?;
     fs::create_dir_all(root.join("prebuilts"))?;
@@ -698,68 +1064,17 @@ fn generate_aosp(root: &Path, dev: &DeviceContext) -> Result<()> {
     fs::create_dir_all(root.join("configs/vintf"))?;
     let vintf = find_vintf(dev);
 
-    let aosp_board = format!(
-        "\
-DEVICE_PATH := device/{manufacturer}/{codename}
-CONFIGS_PATH := $(DEVICE_PATH)/configs
-
-{arch}
-# Bootloader
-TARGET_BOOTLOADER_BOARD_NAME := {board}
-TARGET_NO_BOOTLOADER := true
-
-{kernel}
-{partitions}
-# Platform
-TARGET_BOARD_PLATFORM := {platform}
-
-# Properties
-PROPS_PATH := $(CONFIGS_PATH)/properties
-{props}
-{vintf}
-{recovery}
-",
-        manufacturer = dev.manufacturer,
-        codename = dev.codename,
-        arch = arch_block(dev.meta),
-        board = board_name(dev.meta),
-        kernel = kernel_block(dev, false),
-        partitions = partition_block(dev, false),
-        platform = dev.meta.platform,
-        props = prop_block(dev),
-        vintf = vintf_block(&vintf),
-        recovery = recovery_block(dev, false),
-    );
+    let aosp_board = aosp_board(dev, &vintf);
     fs::write(root.join("BoardConfig.mk"), aosp_board)?;
 
-    let ab = dev.meta.is_ab == "true";
-    let mut board_extra = String::new();
-    if ab {
-        board_extra.push_str("# A/B\nAB_OTA_UPDATER := true\nAB_OTA_PARTITIONS +=");
-        for part in &dev.images.dynamic_partitions {
-            board_extra.push_str(&format!(" \\\n    {part}"));
-        }
-        board_extra.push_str("\n\nBOARD_USES_RECOVERY_AS_BOOT := true\n\n");
-    }
-    if !board_extra.is_empty() {
-        // Keep the A/B block near the top, like the old templates.
-        let current = fs::read_to_string(root.join("BoardConfig.mk"))?;
-        fs::write(
-            root.join("BoardConfig.mk"),
-            format!("{board_extra}{current}"),
-        )?;
-    }
-
-    fs::write(root.join("Android.bp"), "soong_namespace {\n}\n")?;
+    fs::write(
+        root.join("Android.bp"),
+        "// SPDX-FileCopyrightText: The LineageOS Project\n// SPDX-License-Identifier: Apache-2.0\n\nsoong_namespace {\n}\n",
+    )?;
     fs::write(
         root.join("Android.mk"),
         format!(
-            "\
-LOCAL_PATH := $(call my-dir)
-ifneq ($(filter {codename},$(TARGET_DEVICE)),)
-include $(call all-makefiles-under,$(LOCAL_PATH))
-endif
-",
+            "# SPDX-FileCopyrightText: The LineageOS Project\n# SPDX-License-Identifier: Apache-2.0\n\nLOCAL_PATH := $(call my-dir)\nifneq ($(filter {codename},$(TARGET_DEVICE)),)\ninclude $(call all-makefiles-under,$(LOCAL_PATH))\nendif\n",
             codename = dev.codename
         ),
     )?;
@@ -778,58 +1093,44 @@ COMMON_LUNCH_CHOICES := \\
             codename = dev.codename
         ),
     )?;
+    let model = get_prop(dev, "ro.product.model").unwrap_or_else(|| model_name(dev.meta));
+    let gms_clientid = get_prop(dev, "ro.com.google.clientidbase")
+        .unwrap_or_else(|| format!("android-{}", dev.manufacturer));
+    let build_desc_line = if dev.meta.description.is_empty() {
+        String::new()
+    } else {
+        format!(" \\\n    BuildDesc=\"{}\"", dev.meta.description)
+    };
+    let build_fp_line = if dev.meta.fingerprint.is_empty() {
+        String::new()
+    } else {
+        format!(" \\\n    BuildFingerprint={}", dev.meta.fingerprint)
+    };
+    let overrides = if build_desc_line.is_empty() && build_fp_line.is_empty() {
+        String::new()
+    } else {
+        format!("\nPRODUCT_BUILD_PROP_OVERRIDES +={build_desc_line}{build_fp_line}\n")
+    };
+    let core64 = if dev.meta.abilist.contains("arm64") || dev.meta.abilist.contains("x86_64") {
+        "$(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)\n"
+    } else {
+        ""
+    };
     fs::write(
         root.join(format!("lineage_{}.mk", dev.codename)),
         format!(
-            "\
-$(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit.mk)
-$(call inherit-product, $(SRC_TARGET_DIR)/product/full_base_telephony.mk)
-
-$(call inherit-product, device/{manufacturer}/{codename}/device.mk)
-
-PRODUCT_DEVICE := {codename}
-PRODUCT_NAME := lineage_{codename}
-PRODUCT_BRAND := {brand}
-PRODUCT_MODEL := {model}
-PRODUCT_MANUFACTURER := {manufacturer}
-
-PRODUCT_BUILD_PROP_OVERRIDES += \\
-    PRIVATE_BUILD_DESC=\"{description}\"
-
-BUILD_FINGERPRINT := {fingerprint}
-",
+            "# SPDX-FileCopyrightText: The LineageOS Project\n# SPDX-License-Identifier: Apache-2.0\n\n# Inherit from those products. Most specific first.\n{core64}$(call inherit-product, $(SRC_TARGET_DIR)/product/full_base_telephony.mk)\n\n# Inherit from {codename} device\n$(call inherit-product, device/{manufacturer}/{codename}/device.mk)\n\n# Inherit some common Lineage stuff.\n$(call inherit-product, vendor/lineage/config/common_full_phone.mk)\n\nPRODUCT_DEVICE := {codename}\nPRODUCT_NAME := lineage_{codename}\nPRODUCT_BRAND := {brand}\nPRODUCT_MODEL := {model}\nPRODUCT_MANUFACTURER := {manufacturer}\n\nPRODUCT_GMS_CLIENTID_BASE := {gms_clientid}\n{overrides}",
+            core64 = core64,
             manufacturer = dev.manufacturer,
             codename = dev.codename,
             brand = dev.meta.brand,
-            model = model_name(dev.meta),
-            description = dev.meta.description,
-            fingerprint = dev.meta.fingerprint,
+            model = model,
+            gms_clientid = gms_clientid,
+            overrides = overrides,
         ),
     )?;
-    fs::write(
-        root.join("device.mk"),
-        format!(
-            "\
-LOCAL_PATH := device/{manufacturer}/{codename}
 
-PRODUCT_COPY_FILES += \\
-    $(LOCAL_PATH)/rootdir/etc/{fstab}:$(TARGET_COPY_OUT_VENDOR)/etc/{fstab}
-
-$(call inherit-product-if-exists, vendor/{manufacturer}/{codename}/{codename}-vendor.mk)
-",
-            manufacturer = dev.manufacturer,
-            codename = dev.codename,
-            fstab = dev
-                .fstab
-                .map(|f| f
-                    .path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned())
-                .unwrap_or_else(|| "fstab".to_string()),
-        ),
-    )?;
+    fs::write(root.join("device.mk"), device_mk(dev)?)?;
 
     copy_prebuilts(dev, &root.join("prebuilts"), false)?;
     copy_props(dev, root)?;
@@ -867,7 +1168,10 @@ TARGET_BOARD_PLATFORM := {platform}
 ",
         manufacturer = dev.manufacturer,
         codename = dev.codename,
-        arch = arch_block(dev.meta),
+        arch = arch_block(
+            dev.meta,
+            &get_prop(dev, "ro.bionic.cpu_variant").unwrap_or_else(|| "generic".to_string())
+        ),
         board = board_name(dev.meta),
         kernel = kernel_block(dev, true),
         partitions = partition_block(dev, true),
@@ -1156,16 +1460,15 @@ fn copy_prebuilts(dev: &DeviceContext, dir: &Path, twrp: bool) -> Result<()> {
     Ok(())
 }
 
-fn copy_rootdir(dev: &DeviceContext, root: &Path) -> Result<()> {
-    let rootdir = root.join("rootdir");
-    let bin_dir = rootdir.join("bin");
-    let etc_dir = rootdir.join("etc");
-    util::ensure_dir(&bin_dir)?;
-    util::ensure_dir(&etc_dir)?;
+struct RootdirLists {
+    bin: Vec<(String, PathBuf)>,
+    etc: Vec<(String, PathBuf)>,
+    recovery: Vec<(String, PathBuf)>,
+}
 
-    // aospdtgen only puts vendor/bin/*.sh into rootdir/bin.
+fn collect_rootdir_lists(dev: &DeviceContext) -> Result<RootdirLists> {
+    let mut bin = Vec::new();
     let vendor_bin = dev.dump_root.join("vendor/bin");
-    let mut bin_files = Vec::new();
     if vendor_bin.is_dir() {
         for entry in walkdir::WalkDir::new(&vendor_bin).follow_links(false) {
             let entry = match entry {
@@ -1173,62 +1476,70 @@ fn copy_rootdir(dev: &DeviceContext, root: &Path) -> Result<()> {
                 Err(_) => continue,
             };
             let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            if path.extension().map(|e| e == "sh").unwrap_or(false) {
-                let name = path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned();
-                util::copy_file(path, &bin_dir.join(&name))?;
-                bin_files.push(name);
+            if path.is_file() && path.extension().map(|e| e == "sh").unwrap_or(false) {
+                bin.push((
+                    path.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned(),
+                    path.to_path_buf(),
+                ));
             }
         }
     }
-    bin_files.sort();
-    bin_files.dedup();
+    bin.sort_by(|a, b| a.0.cmp(&b.0));
+    bin.dedup_by(|a, b| a.0 == b.0);
 
-    // aospdtgen rootdir/etc contains vendor/etc/init/hw files.
+    let mut etc = Vec::new();
     let init_hw = dev.dump_root.join("vendor/etc/init/hw");
-    let mut etc_files = Vec::new();
     if init_hw.is_dir() {
         for entry in fs::read_dir(&init_hw)? {
             let entry = entry?;
             let path = entry.path();
-            if !path.is_file() {
-                continue;
+            if path.is_file() {
+                etc.push((entry.file_name().to_string_lossy().into_owned(), path));
             }
-            let name = entry.file_name().to_string_lossy().into_owned();
-            util::copy_file(&path, &etc_dir.join(&name))?;
-            etc_files.push(name);
         }
     }
-    etc_files.sort();
-    etc_files.dedup();
+    etc.sort_by(|a, b| a.0.cmp(&b.0));
+    etc.dedup_by(|a, b| a.0 == b.0);
 
-    // Recovery rc files come only from the recovery ramdisk if present,
-    // otherwise from boot (and finally init_boot).  Only top-level files are
-    // considered, exactly like aospdtgen's ramdisk iteration.
-    let recovery_ramdisk = pick_recovery_ramdisk(dev);
-    let mut recovery_rcs = Vec::new();
-    if let Some(ramdisk) = recovery_ramdisk {
+    let mut recovery = Vec::new();
+    if let Some(ramdisk) = pick_recovery_ramdisk(dev) {
         for entry in fs::read_dir(ramdisk)? {
             let entry = entry?;
             let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.ends_with(".rc") {
-                util::copy_file(&path, &etc_dir.join(&name))?;
-                recovery_rcs.push(name);
+            if path.is_file() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.ends_with(".rc") {
+                    recovery.push((name, path));
+                }
             }
         }
     }
-    recovery_rcs.sort();
-    recovery_rcs.dedup();
+    recovery.sort_by(|a, b| a.0.cmp(&b.0));
+    recovery.dedup_by(|a, b| a.0 == b.0);
+
+    Ok(RootdirLists { bin, etc, recovery })
+}
+
+fn copy_rootdir(dev: &DeviceContext, root: &Path) -> Result<()> {
+    let rootdir = root.join("rootdir");
+    let bin_dir = rootdir.join("bin");
+    let etc_dir = rootdir.join("etc");
+    util::ensure_dir(&bin_dir)?;
+    util::ensure_dir(&etc_dir)?;
+    let lists = collect_rootdir_lists(dev)?;
+
+    for (name, source) in &lists.bin {
+        util::copy_file(source, &bin_dir.join(name))?;
+    }
+    for (name, source) in &lists.etc {
+        util::copy_file(source, &etc_dir.join(name))?;
+    }
+    for (name, source) in &lists.recovery {
+        util::copy_file(source, &etc_dir.join(name))?;
+    }
 
     let fstab_name = dev
         .fstab
@@ -1239,13 +1550,16 @@ fn copy_rootdir(dev: &DeviceContext, root: &Path) -> Result<()> {
         }
     }
 
+    let bin_names: Vec<String> = lists.bin.iter().map(|(n, _)| n.clone()).collect();
+    let etc_names: Vec<String> = lists.etc.iter().map(|(n, _)| n.clone()).collect();
+    let recovery_names: Vec<String> = lists.recovery.iter().map(|(n, _)| n.clone()).collect();
     fs::write(
         rootdir.join("Android.bp"),
-        rootdir_android_bp(&bin_files, &etc_files, fstab_name.as_deref()),
+        rootdir_android_bp(&bin_names, &etc_names, fstab_name.as_deref()),
     )?;
     fs::write(
         rootdir.join("Android.mk"),
-        rootdir_android_mk(&recovery_rcs),
+        rootdir_android_mk(&recovery_names),
     )?;
     Ok(())
 }

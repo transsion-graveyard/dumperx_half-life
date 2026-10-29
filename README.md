@@ -237,6 +237,14 @@ The rootdir follows aospdtgen's filtering: only `vendor/bin/*.sh` and
 recovery ramdisk (or boot/init_boot if recovery is absent). It does not dump
 every rc file from every ramdisk into `rootdir/etc`.
 
+`BoardConfig.mk` and `device.mk` include the aospdtgen conditional sections:
+A/B and virtual-A/B setup, APEX handling, display/Vulkan, kernel prebuilts,
+dynamic partitions, properties, VINTF, recovery pixel format, vendor security
+patch, verified boot/AVB, fastbootd, health HALs, UFFD GC, RRO overlays,
+rootdir modules, API levels, Soong namespaces and the vendor makefile
+inheritance. Sections are only omitted when their source property/file is
+actually absent.
+
 TWRP tree output: `BoardConfig.mk`, `device.mk`, `Android.bp`, `Android.mk`,
 `AndroidProducts.mk`, `omni_<device>.mk`, `recovery.fstab`, `recovery/root`,
 `prebuilt/{kernel,dtb.img,dtbo.img}` and `vendorsetup.sh`.
