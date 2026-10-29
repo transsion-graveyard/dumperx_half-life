@@ -24,7 +24,10 @@ import os
 import sys
 import io
 import zlib
-import zstandard as zstd
+try:
+	import zstandard as zstd
+except ImportError:
+	zstd = None
 import argparse
 import hashlib
 from binascii import crc32, b2a_hex
@@ -215,9 +218,15 @@ class UNDZChunk(dz.DZChunk, UNDZUtils):
                     buf = zlib.decompress(zdata)
 
                 else:
-                    # decompress with zstandard
-                    dctx = zstd.ZstdDecompressor()
-                    buf = dctx.decompress(zdata, max_output_size=200000000)
+                    # decompress with zstandard (module) or the zstd CLI
+                    if zstd is not None:
+                        dctx = zstd.ZstdDecompressor()
+                        buf = dctx.decompress(zdata, max_output_size=200000000)
+                    else:
+                        import subprocess
+                        proc = subprocess.run(["zstd", "-dc"], input=zdata,
+                                              stdout=subprocess.PIPE, check=True)
+                        buf = proc.stdout
     
                 crc = crc32(buf) & 0xFFFFFFFF
 
