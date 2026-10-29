@@ -218,6 +218,37 @@ impl Pipeline {
         Ok(())
     }
 
+    /// Remove top-level firmware images and transient diagnostics once the
+    /// extracted trees, device trees and reports have been generated.
+    fn cleanup_dump(&self) -> Result<()> {
+        if self.opts.keep_images {
+            util::info("keeping top-level images and diagnostic JSON (--keep-images)");
+            return Ok(());
+        }
+        let mut removed = 0usize;
+        for entry in fs::read_dir(&self.opts.out)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let is_image = path
+                .extension()
+                .map(|ext| ext.eq_ignore_ascii_case("img"))
+                .unwrap_or(false);
+            let is_report = name == "fstab-report.json" || name == "super-info.json";
+            if is_image || is_report {
+                fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
+                removed += 1;
+            }
+        }
+        util::info(format!(
+            "cleaned up {removed} top-level image/report file(s)"
+        ));
+        Ok(())
+    }
+
     fn has_content(&self) -> Result<bool> {
         for entry in fs::read_dir(&self.opts.out)? {
             let entry = entry?;
@@ -939,6 +970,8 @@ impl Pipeline {
                 },
             )?;
         }
+
+        self.cleanup_dump()?;
 
         util::step("Generating manifests");
         sha1sum::write_all_files(&self.opts.out)?;

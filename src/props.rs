@@ -1106,7 +1106,7 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
         description.replace(' ', "-")
     };
 
-    let sanitize = |s: &str| -> String {
+    let sanitize_lower = |s: &str| -> String {
         let lower = s.to_lowercase();
         let filtered: String = lower
             .chars()
@@ -1114,9 +1114,20 @@ pub fn extract_metadata(store: &PropStore, kernel_version: Option<&str>) -> Devi
             .collect();
         filtered.replace('_', "-").chars().take(35).collect()
     };
-    let platform = sanitize(&platform);
-    let codename = sanitize(&codename);
-    let manufacturer = sanitize(&manufacturer);
+    // The original shell keeps the codename's case (TECNO-CM6); only the
+    // platform/manufacturer values are lowercased.
+    let sanitize_name = |s: &str| -> String {
+        s.chars()
+            .filter(|c| c.is_ascii_graphic() || *c == ' ')
+            .collect::<String>()
+            .trim()
+            .chars()
+            .take(35)
+            .collect()
+    };
+    let platform = sanitize_lower(&platform);
+    let codename = sanitize_name(&codename);
+    let manufacturer = sanitize_lower(&manufacturer);
     let repo = format!("{}_{}_dump", brand.to_lowercase(), codename.to_lowercase());
     let repo = repo.replace(' ', "-");
 
@@ -1157,6 +1168,22 @@ mod tests {
         ));
         assert!(!wildcard_match("vendor/build*.prop", "system/build.prop"));
         assert!(wildcard_match("a/?/c", "a/b/c"));
+    }
+
+    #[test]
+    fn preserves_codename_case_from_odm() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(".work/test-props-codename");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("odm/etc")).unwrap();
+        std::fs::write(
+            dir.join("odm/etc/build.prop"),
+            "ro.product.odm.device=TECNO-CM6\nro.product.odm.manufacturer=TECNO\n",
+        )
+        .unwrap();
+        let store = PropStore::load(&dir).unwrap();
+        let meta = extract_metadata(&store, None);
+        assert_eq!(meta.codename, "TECNO-CM6");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

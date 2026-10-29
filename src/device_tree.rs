@@ -1325,10 +1325,17 @@ fn tree_readme(dev: &DeviceContext, kind: &str) -> String {
         None => out.push_str("- dtb: not present\n"),
     }
     match &dev.images.dtbo {
-        Some(path) => out.push_str(&format!(
-            "- dtbo: `{}`\n",
-            path.strip_prefix(dev.dump_root).unwrap_or(path).display()
-        )),
+        Some(path) => {
+            let display = if dev.dump_root.join("dtbo").is_dir() {
+                "dtbo/".to_string()
+            } else {
+                path.strip_prefix(dev.dump_root)
+                    .unwrap_or(path)
+                    .display()
+                    .to_string()
+            };
+            out.push_str(&format!("- dtbo: `{display}`\n"));
+        }
         None => out.push_str("- dtbo: not present\n"),
     }
     out.push_str("- proprietary files: `proprietary-files.txt` / `proprietary-files.sha1`\n");

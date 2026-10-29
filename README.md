@@ -68,7 +68,8 @@ expect. The Rust fstab parser accepts:
   kept as candidates instead of being collapsed
 
 Malformed lines are reported with `file:line` in the dump log and in
-`out/fstab-report.json` (the process prints every error). `dumprx fstab
+`out/fstab-report.json` during a dump (the file is removed at the end unless
+`--keep-images` is used; the process also prints every error). `dumprx fstab
 <path…>` can be used standalone; it exits non-zero on parse errors.
 
 ## Build
@@ -123,7 +124,7 @@ dumprx proprietary out              # regenerate proprietary-files.{txt,sha1}
 ```text
 -o, --out <DIR>          output directory (default: out)
 -P, --partition <NAME>   only extract these super partitions (repeatable)
-    --keep-images        keep partition images after filesystem extraction
+    --keep-images        keep top-level images and diagnostic JSON files
     --no-device-tree     skip TWRP/AOSP device-tree generation
     --twrp               generate the TWRP tree
     --aosp               generate the AOSP/LineageOS tree
@@ -140,17 +141,21 @@ out/
 ├── all_files.sha1
 ├── proprietary-files.txt
 ├── proprietary-files.sha1
-├── fstab-report.json
-├── super-info.json              # liblp metadata summary (when a super exists)
 ├── ikconfig                    # when the kernel embeds CONFIG_IKCONFIG
-├── boot.img / boot/raw/...     # kernel, ramdisk, dtb, bootconfig
-├── vendor_boot.img / vendor_boot/ramdisk/<fragment>
-├── init_boot.img / init_boot/ramdisk
-├── recovery.img / recovery/...
-├── dtbo.img / dtbo/dtb / dtbo/dts
+├── boot/raw/...                # kernel, ramdisk, dtb, bootconfig
+├── vendor_boot/ramdisk/<fragment>
+├── init_boot/ramdisk
+├── recovery/...
+├── dtbo/dtb / dtbo/dts
 ├── system/ system_ext/ vendor/ odm/ product/ ...
 └── aosp-device-tree/  twrp-device-tree/
 ```
+
+After extraction and device-tree generation, DumprX deletes top-level
+`*.img` files and the transient `fstab-report.json` / `super-info.json`
+files. The extracted partition directories, `boot/`, `vendor_boot/`,
+`dtbo/`, manifests and device trees remain. Use `--keep-images` to retain
+the images and reports for debugging.
 
 ## Device trees and image selection
 
@@ -176,7 +181,7 @@ The Rust device-tree generator replaces `twrpdtgen`/`aospdtgen`. It inspects
   it in the tree README, and still produces the tree. It never asserts or
   exits silently.
 - AOSP device identifiers drop the prefix before the last `-`
-  (`TECNO-CM6` -> `cm6`) because AOSP device names cannot contain dashes;
+  (`TECNO-CM6` -> `CM6`) because AOSP device names cannot contain dashes;
   the detected codename remains in the tree README. Names without a dash are
   used unchanged (`mssi_64_64only_cn_armv82` stays as-is).
 - TWRP `recovery.fstab` is derived from the dump fstab; rootdir `*.rc` files
